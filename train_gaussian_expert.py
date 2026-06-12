@@ -8,6 +8,7 @@ from pathlib import Path
 
 import numpy as np
 import torch
+from torch.optim.lr_scheduler import OneCycleLR
 from torch.utils.data import DataLoader, random_split
 from tqdm import tqdm
 
@@ -67,6 +68,20 @@ def maybe_build_bootstrap(args, device: torch.device, input_channels: int) -> De
     return model
 
 
+def build_onecycle(optimizer, steps_per_epoch: int, args):
+    total_steps = max(1, steps_per_epoch * args.epochs)
+    return OneCycleLR(
+        optimizer,
+        max_lr=args.lr_max,
+        total_steps=total_steps,
+        pct_start=args.warmup_pct,
+        anneal_strategy="cos",
+        div_factor=args.lr_max / args.lr_final,
+        final_div_factor=1.0,
+        cycle_momentum=False,
+    )
+
+
 def train(args) -> None:
     set_seed(args.seed)
     device = torch.device(args.device if args.device else ("cuda" if torch.cuda.is_available() else "cpu"))
@@ -88,7 +103,14 @@ def train(args) -> None:
     model = Denoiser(input_channels=input_channels).to(device)
     bootstrap_model = maybe_build_bootstrap(args, device, input_channels=input_channels)
     criterion = CharbonnierLoss(eps=args.charbonnier_eps).to(device)
-    optimizer = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
+    optimizer = torch.optim.AdamW(
+        model.parameters(),
+        lr=args.lr_final,
+        betas=(0.9, 0.999),
+        eps=1e-8,
+        weight_decay=args.weight_decay,
+    )
+    scheduler = build_onecycle(optimizer, len(train_loader), args)
 
     metadata = vars(args).copy()
     metadata.update({"dataset_size": len(dataset), "train_size": train_size, "val_size": val_size})
@@ -116,6 +138,7 @@ def train(args) -> None:
             if args.grad_clip > 0:
                 torch.nn.utils.clip_grad_norm_(model.parameters(), args.grad_clip)
             optimizer.step()
+            scheduler.step()
             total += float(loss.item())
 
         train_loss = total / max(1, len(train_loader))
@@ -150,7 +173,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--crop_size", type=int, default=128)
     parser.add_argument("--random_crop", type=int, default=1)
     parser.add_argument("--pseudo_clean_frames", type=int, default=0, help="0 means average all frames in the sequence.")
-    parser.add_argument("--bootstrap_checkpoint", type=str, default="", help="Optional trained N2N model used as Ĉ generator.")
+    parser.add_argument("--bootstrap_checkpoint", type=str, default="", help="Optional trained N2N model used as C_hat generator.")
     parser.add_argument("--intensity_transform", choices=["none", "log1p", "boxcox", "learned_vst"], default="log1p")
     parser.add_argument("--vst_lut", type=str, default="")
     parser.add_argument("--boxcox_lam", type=float, default=-0.15)
@@ -165,14 +188,22 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--batch_size", type=int, default=8)
     parser.add_argument("--num_workers", type=int, default=0)
     parser.add_argument("--val_fraction", type=float, default=0.02)
-    parser.add_argument("--lr", type=float, default=5e-4)
+    parser.add_argument("--lr", type=float, default=0.01, help="Compatibility alias for lr_max.")
+    parser.add_argument("--lr_max", type=float, default=None)
+    parser.add_argument("--lr_final", type=float, default=0.0005)
+    parser.add_argument("--warmup_pct", type=float, default=0.1)
     parser.add_argument("--weight_decay", type=float, default=1e-2)
     parser.add_argument("--charbonnier_eps", type=float, default=1e-3)
     parser.add_argument("--grad_clip", type=float, default=1.0)
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--device", type=str, default="")
     parser.add_argument("--save_dir", type=str, default="results/checkpoints/gaussian_expert")
-    return parser.parse_args()
+    args = parser.parse_args()
+    if args.lr_max is None:
+        args.lr_max = args.lr
+    if args.lr_max <= args.lr_final:
+        raise ValueError(f"lr_max must be greater than lr_final, got lr_max={args.lr_max}, lr_final={args.lr_final}")
+    return args
 
 
 if __name__ == "__main__":

@@ -36,6 +36,24 @@ NTN/
 
 ## 最小流程
 
+如果要先重新训练 N2N baseline，使用 `train_n2n.py`。该入口保留原项目的核心训练策略：
+`AdamW(lr_final 起步, weight_decay=0.01)`，每个 batch 调用 `OneCycleLR`，
+先 warmup 到 `lr_max`，再 cosine annealing 回到 `lr_final`。
+
+```powershell
+python train_n2n.py `
+  --data_path /mnt2/songyd/5x5 `
+  --data_subdir npy `
+  --strict_data_subdir 1 `
+  --intensity_transform log1p `
+  --crop_size 512 `
+  --batch_size 48 `
+  --epochs 5 `
+  --lr 0.01 `
+  --lr_final 0.0005 `
+  --warmup_pct 0.1
+```
+
 先训练 Gaussian expert `D_prime`：
 
 ```powershell
