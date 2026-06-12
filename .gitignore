@@ -1,0 +1,13 @@
+__pycache__/
+*.py[cod]
+.venv/
+.uv-cache/
+
+results/checkpoints/**/*.pth
+results/checkpoints/**/*.pt
+results/images/*
+results/eval/*
+
+!results/checkpoints/.gitkeep
+!results/images/.gitkeep
+!results/eval/.gitkeep

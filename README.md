@@ -1,0 +1,86 @@
+# NTN: N2N-bootstrap Noise Translation Network
+
+本项目复刻并改造 `Learning to Translate Noise for Robust Image Denoising`
+的 Noise Translation Network 思路，用现有 Noise2Noise 数据条件实现无真值
+GT 的 NTN 训练。
+
+## 核心改造
+
+原论文训练 `T` 时使用 noisy-clean pair。本项目没有真 GT，因此采用
+`N2N-bootstrap` 版本：
+
+- `I1`：第一路 noisy observation，输入 Noise Translator `T`。
+- `I2`：同场景第二路独立 noisy observation，替代 clean GT 参与 implicit loss。
+- `C_hat`：伪干净图，默认来自多帧均值，也可由已训练 N2N checkpoint 生成。
+- `D_prime`：先用 `C_hat + synthetic Gaussian noise -> C_hat` 训练出的 Gaussian expert。
+- `T`：把真实噪声翻译为更接近 Gaussian 的噪声，再交给 `D_prime` 去噪。
+
+## 项目结构
+
+```text
+NTN/
+├── models/              # Denoiser 复制件、NoiseTranslator、GIBlock
+├── data/                # N2N-bootstrap 三元组数据集
+├── losses/              # Charbonnier 与 NTN explicit loss
+├── utils/               # VST、IO、checkpoint、metrics
+├── configs/             # 默认实验配置
+├── scripts/             # smoke test 等辅助脚本
+├── results/             # checkpoint、图像、评估输出
+├── train_gaussian_expert.py
+├── train_translator.py
+├── inference_ntn.py
+├── eval.py
+├── experiment_log.md
+└── README.md
+```
+
+## 最小流程
+
+先训练 Gaussian expert `D_prime`：
+
+```powershell
+python train_gaussian_expert.py `
+  --data_path D:\Desktop\lightweight_G\mix `
+  --intensity_transform log1p `
+  --pseudo_clean_frames 0 `
+  --sigma_max 0.15 `
+  --epochs 5
+```
+
+再冻结 `D_prime` 训练 Noise Translator `T`：
+
+```powershell
+python train_translator.py `
+  --data_path D:\Desktop\lightweight_G\mix `
+  --gaussian_expert_checkpoint results\checkpoints\gaussian_expert\gaussian_expert_epoch_5.pth `
+  --intensity_transform log1p `
+  --implicit_target i2 `
+  --alpha 0.05 `
+  --beta 0.002 `
+  --epochs 5
+```
+
+推理：
+
+```powershell
+python inference_ntn.py `
+  --input path\to\noisy.npy `
+  --translator_checkpoint results\checkpoints\translator\translator_epoch_5.pth `
+  --gaussian_expert_checkpoint results\checkpoints\gaussian_expert\gaussian_expert_epoch_5.pth `
+  --out_dir results\images
+```
+
+评估与出图：
+
+```powershell
+python eval.py `
+  --noisy path\to\noisy.npy `
+  --denoised results\images\noisy_ntn.npy `
+  --reference path\to\pseudo_or_clean.npy `
+  --out_dir results\eval
+```
+
+## 复现实验注意
+
+`experiment_log.md` 必须记录每次实验的配置、checkpoint、指标和视觉判断。
+去噪任务不能只看 PSNR/SSIM；需要同时检查血管结构是否光滑、细小血管是否被磨平。

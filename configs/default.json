@@ -1,0 +1,25 @@
+{
+  "project": "N2N-bootstrap NTN",
+  "paper": "Learning to Translate Noise for Robust Image Denoising, arXiv:2412.04727v2",
+  "variant": "No-GT adaptation with I1/I2 noisy pairs and pseudo-clean C_hat",
+  "data": {
+    "intensity_transform": "log1p",
+    "intervals": [5, 7, 9],
+    "crop_size": 128,
+    "pseudo_clean_frames": 0
+  },
+  "gaussian_expert": {
+    "sigma_min": 0.0,
+    "sigma_max": 0.15,
+    "lr": 0.0005
+  },
+  "translator": {
+    "width": 32,
+    "middle_blocks": 2,
+    "inject_sigma": 1.0,
+    "alpha": 0.05,
+    "beta": 0.002,
+    "highpass_ratio": 0.0,
+    "lr": 0.0002
+  }
+}
