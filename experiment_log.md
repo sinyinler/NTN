@@ -9,7 +9,7 @@
   - 阶段二训练 Noise Translator `T`：`D_prime(T(I1))` 对齐 `I2` 或 `C_hat`，并加入 spatial/frequency Wasserstein explicit loss。
   - `C_hat` 默认使用多帧均值，也支持用已有 N2N checkpoint 在线生成。
 - 配置：见 `configs/default.json`。
-- git commit：待初始化后记录。
+- git commit：`3d9f5cd`，初始化 N2N-bootstrap NTN 复现骨架。
 - 验证：
   - `uv run --with torch python scripts\smoke_test.py`
   - 输出：`translated=(2, 1, 64, 64)`，`denoised=(2, 1, 64, 64)`，explicit loss 为有限值。
