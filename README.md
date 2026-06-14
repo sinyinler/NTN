@@ -80,6 +80,17 @@ python train_translator.py `
 
 推理：
 
+查看单独 N2N baseline 效果：
+
+```powershell
+python inference_n2n.py `
+  --input /mnt2/songyd/5x5/5x5x1/0/npy `
+  --checkpoint results\checkpoints\n2n_5x5_log1p\model_epoch_5.pth `
+  --intensity_transform log1p `
+  --limit 20 `
+  --out_dir results\images\n2n_5x5_train_preview
+```
+
 ```powershell
 python inference_ntn.py `
   --input path\to\noisy.npy `

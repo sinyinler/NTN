@@ -28,3 +28,15 @@
   - `uv run --with torch python train_translator.py --help`
   - `uv run --with torch python scripts\smoke_test.py`
 - 结果：命令行入口和核心前向链路均正常；尚未开始真实服务器训练。
+
+## 2026-06-14 补充 N2N baseline 推理入口
+
+- 改动：新增 `inference_n2n.py`。
+- 目的：训练完 N2N 后，可以在不训练 `D_prime/T` 的情况下先查看 baseline 去噪效果。
+- 输出：
+  - `view_png/*_input.png`
+  - `view_png/*_n2n.png`
+  - `data_npy/*_input.npy`
+  - `data_npy/*_n2n.npy`
+  - `comparison/*_input_vs_n2n.png`，包含原图/去噪图和局部放大。
+- 结果：等待服务器拉取后在训练好的 N2N checkpoint 上运行。
