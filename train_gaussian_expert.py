@@ -131,7 +131,8 @@ def train(args) -> None:
     for epoch in range(1, args.epochs + 1):
         model.train()
         total = 0.0
-        for batch in tqdm(train_loader, desc=f"D' epoch {epoch}/{args.epochs}"):
+        pbar = tqdm(train_loader, desc=f"D' epoch {epoch}/{args.epochs}")
+        for step, batch in enumerate(pbar, start=1):
             image = batch["input"].to(device)
             pseudo_clean = batch["pseudo_clean"].to(device)
             condition = condition_or_none(batch, device)
@@ -151,7 +152,16 @@ def train(args) -> None:
                 torch.nn.utils.clip_grad_norm_(model.parameters(), args.grad_clip)
             optimizer.step()
             scheduler.step()
-            total += float(loss.item())
+            loss_value = float(loss.item())
+            total += loss_value
+            current_lr = scheduler.get_last_lr()[0]
+            pbar.set_postfix(
+                {
+                    "loss": f"{loss_value:.6f}",
+                    "avg": f"{total / step:.6f}",
+                    "lr": f"{current_lr:.3g}",
+                }
+            )
 
         train_loss = total / max(1, len(train_loader))
         val_loss = 0.0

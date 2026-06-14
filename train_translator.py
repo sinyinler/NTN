@@ -172,7 +172,8 @@ def train(args) -> None:
     for epoch in range(1, args.epochs + 1):
         translator.train()
         totals = {"loss": 0.0, "loss_implicit": 0.0, "loss_explicit": 0.0, "loss_spatial": 0.0, "loss_freq": 0.0}
-        for batch in tqdm(train_loader, desc=f"T epoch {epoch}/{args.epochs}"):
+        pbar = tqdm(train_loader, desc=f"T epoch {epoch}/{args.epochs}")
+        for step, batch in enumerate(pbar, start=1):
             out = forward_batch(batch, train_mode=True)
             optimizer.zero_grad(set_to_none=True)
             out["loss"].backward()
@@ -182,6 +183,16 @@ def train(args) -> None:
             scheduler.step()
             for key in totals:
                 totals[key] += float(out[key].item())
+            current_lr = scheduler.get_last_lr()[0]
+            pbar.set_postfix(
+                {
+                    "loss": f"{float(out['loss'].item()):.6f}",
+                    "avg": f"{totals['loss'] / step:.6f}",
+                    "impl": f"{float(out['loss_implicit'].item()):.6f}",
+                    "expl": f"{float(out['loss_explicit'].item()):.6f}",
+                    "lr": f"{current_lr:.3g}",
+                }
+            )
 
         train_metrics = {key: value / max(1, len(train_loader)) for key, value in totals.items()}
         val_loss = 0.0
