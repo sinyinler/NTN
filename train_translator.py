@@ -67,6 +67,15 @@ def load_frozen_denoiser(path: str, device: torch.device, input_channels: int) -
     return model
 
 
+def maybe_data_parallel(model: torch.nn.Module, args, name: str) -> torch.nn.Module:
+    """和原 N2N 训练保持一致：多卡可用时默认启用 DataParallel。"""
+
+    if torch.cuda.device_count() > 1 and bool(args.data_parallel):
+        print(f"[INFO] Using DataParallel for {name} on {torch.cuda.device_count()} GPUs")
+        return torch.nn.DataParallel(model)
+    return model
+
+
 def build_onecycle(optimizer, steps_per_epoch: int, args):
     total_steps = max(1, steps_per_epoch * args.epochs)
     return OneCycleLR(
@@ -104,6 +113,9 @@ def train(args) -> None:
     input_channels = 2 if args.lambda_conditioned and args.intensity_transform == "boxcox" else 1
     gaussian_expert = load_frozen_denoiser(args.gaussian_expert_checkpoint, device, input_channels=input_channels)
     bootstrap_model = load_frozen_denoiser(args.bootstrap_checkpoint, device, input_channels=input_channels) if args.bootstrap_checkpoint else None
+    gaussian_expert = maybe_data_parallel(gaussian_expert, args, name="frozen Gaussian expert D_prime")
+    if bootstrap_model is not None:
+        bootstrap_model = maybe_data_parallel(bootstrap_model, args, name="frozen N2N bootstrap")
 
     translator = NoiseTranslator(
         input_channels=input_channels,
@@ -112,6 +124,7 @@ def train(args) -> None:
         inject_sigma=args.inject_sigma,
         residual_scale=args.residual_scale,
     ).to(device)
+    translator = maybe_data_parallel(translator, args, name="Noise Translator T")
     implicit_criterion = CharbonnierLoss(eps=args.charbonnier_eps).to(device)
     explicit_criterion = ExplicitNoiseTranslationLoss(beta=args.beta, highpass_ratio=args.highpass_ratio).to(device)
     optimizer = torch.optim.AdamW(
@@ -234,6 +247,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--weight_decay", type=float, default=1e-2)
     parser.add_argument("--charbonnier_eps", type=float, default=1e-3)
     parser.add_argument("--grad_clip", type=float, default=1.0)
+    parser.add_argument("--data_parallel", type=int, default=1)
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--device", type=str, default="")
     parser.add_argument("--save_dir", type=str, default="results/checkpoints/translator")

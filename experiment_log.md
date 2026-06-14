@@ -40,3 +40,12 @@
   - `data_npy/*_n2n.npy`
   - `comparison/*_input_vs_n2n.png`，包含原图/去噪图和局部放大。
 - 结果：等待服务器拉取后在训练好的 N2N checkpoint 上运行。
+
+## 2026-06-14 修复 D_prime/T 多卡训练
+
+- 问题：`train_n2n.py` 默认启用 `DataParallel`，但 `train_gaussian_expert.py` 和 `train_translator.py` 没有包 `DataParallel`，导致后两阶段只使用单卡。
+- 改动：
+  - 为 `train_gaussian_expert.py` 增加 `--data_parallel` 参数，默认 1。
+  - 为 `train_translator.py` 增加 `--data_parallel` 参数，默认 1。
+  - 训练模型和冻结的 N2N/D_prime 辅助模型都在多 GPU 可用时包成 `torch.nn.DataParallel`。
+- 目的：让 N2N、D_prime、T 三个阶段的硬件使用习惯保持一致。

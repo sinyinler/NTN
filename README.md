@@ -39,6 +39,8 @@ NTN/
 如果要先重新训练 N2N baseline，使用 `train_n2n.py`。该入口保留原项目的核心训练策略：
 `AdamW(lr_final 起步, weight_decay=0.01)`，每个 batch 调用 `OneCycleLR`，
 先 warmup 到 `lr_max`，再 cosine annealing 回到 `lr_final`。
+`train_n2n.py`、`train_gaussian_expert.py`、`train_translator.py` 都会在检测到多张
+CUDA GPU 时默认启用 `DataParallel`，如需强制单卡可加 `--data_parallel 0`。
 
 ```powershell
 python train_n2n.py `
