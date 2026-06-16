@@ -147,6 +147,18 @@ def make_triplet(raw: np.ndarray, n2n: np.ndarray, ntn: np.ndarray, out_path: Pa
     canvas.save(out_path)
 
 
+def output_stem(path: Path, prefix: str) -> str:
+    """根据输入路径生成稳定且不冲突的输出名，避免多个 0.npy 互相覆盖。"""
+
+    parts = list(path.parts)
+    if path.parent.name == "npy" and len(parts) >= 4:
+        tail = parts[-4:-1] + [path.stem]
+    else:
+        tail = parts[-3:-1] + [path.stem]
+    safe = [part.replace(":", "").replace("\\", "_").replace("/", "_") for part in tail]
+    return prefix + "_".join(safe)
+
+
 def main(args) -> None:
     device = torch.device(args.device if args.device else ("cuda" if torch.cuda.is_available() else "cpu"))
     input_channels = 2 if args.lambda_conditioned and args.intensity_transform == "boxcox" else 1
@@ -168,7 +180,7 @@ def main(args) -> None:
         print(f"[INFO] Comparing {path}")
         n2n = run_n2n(raw, args, transform, n2n_model, device)
         ntn = run_ntn(raw, args, transform, translator, gaussian_expert, device)
-        stem = args.name_prefix + path.parent.parent.parent.name + "_" + path.stem
+        stem = output_stem(path, args.name_prefix)
         save_npy_and_png(raw, out_dir / "data_npy" / f"{stem}_input.npy", out_dir / "view_png" / f"{stem}_input.png")
         save_npy_and_png(n2n, out_dir / "data_npy" / f"{stem}_n2n.npy", out_dir / "view_png" / f"{stem}_n2n.png")
         save_npy_and_png(ntn, out_dir / "data_npy" / f"{stem}_ntn.npy", out_dir / "view_png" / f"{stem}_ntn.png")
