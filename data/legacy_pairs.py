@@ -247,6 +247,7 @@ class SpeckleN2NLogDataset(Dataset):
         strict_data_subdir: bool = False,
         data_index_min: int | None = None,
         data_index_max: int | None = None,
+        include_levels: tuple[int, ...] | None = None,
     ):
         if intervals is None:
             intervals = [5, 7, 9]
@@ -258,6 +259,7 @@ class SpeckleN2NLogDataset(Dataset):
             strict_data_subdir=strict_data_subdir,
             data_index_min=data_index_min,
             data_index_max=data_index_max,
+            include_levels=include_levels,
         )
         self.intensity_transform = str(intensity_transform).lower()
         if self.intensity_transform not in {"log1p", "boxcox", "learned_vst"}:
@@ -433,6 +435,7 @@ class CrossLevelIntervalPairDataset(data.Dataset):
         strict_data_subdir: bool = False,
         data_index_min: int | None = None,
         data_index_max: int | None = None,
+        include_levels: tuple[int, ...] | None = None,
     ):
         self.root_dir = root_dir
         self.intervals = intervals
@@ -444,6 +447,9 @@ class CrossLevelIntervalPairDataset(data.Dataset):
         self.strict_data_subdir = strict_data_subdir
         self.data_index_min = data_index_min
         self.data_index_max = data_index_max
+        # 只保留指定叠加层级（如 level 2/3/4），把 level1 留作 OOD 测试。
+        # 跨层级配对的 target 也只会落在保留的层级上（candidate_levels 由 group_datasets 决定）。
+        self.include_levels = set(include_levels) if include_levels else None
 
         self.group_datasets = {}
         self.input_items = []
@@ -457,6 +463,8 @@ class CrossLevelIntervalPairDataset(data.Dataset):
 
             level = _parse_level_from_name(level_name)
             if level is None:
+                continue
+            if self.include_levels is not None and level not in self.include_levels:
                 continue
 
             for subdir in sorted(os.listdir(level_path)):
@@ -554,6 +562,7 @@ def create_train_dataset(
     strict_data_subdir: bool = False,
     data_index_min: int | None = None,
     data_index_max: int | None = None,
+    include_levels: tuple[int, ...] | None = None,
 ):
     preferred_subdirs = _normalize_preferred_subdirs(
         npy_folder_name,
@@ -575,6 +584,7 @@ def create_train_dataset(
             strict_data_subdir=strict_data_subdir,
             data_index_min=data_index_min,
             data_index_max=data_index_max,
+            include_levels=include_levels,
         )
 
     datasets = []

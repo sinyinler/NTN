@@ -83,3 +83,17 @@
 - 待办：需要用户提供服务器上的 N2N checkpoint 路径以跑 stage-1/2；确认各层级是否共享 scene 索引
   （决定 level1 OOD 评估能否用同场景高叠加帧当参考）。结果（指标+血管放大图）待训练后回填。
 
+## 2026-06-16 确定泛化对照协议 + N2N 支持按层级训练
+
+- 用户确认：各叠加层级是**同一批场景、只是帧数不同** → level1 的 OOD 评估可用同场景高叠加层当参考。
+- 关键发现：`train_n2n.py` 用 `CrossLevelIntervalPairDataset`（[data/legacy_pairs.py](data/legacy_pairs.py)）
+  做**跨层级配对**（target_level >= input_level），所以现有 N2N 是在**含 level1 的全部层级**上训练的。
+- 据此确定对照协议（写入 README「泛化对照实验协议」）：
+  - 必须**重训一个只用 level 2/3/4 的 N2N**（`--levels 2 3 4`，存到 `results/checkpoints/n2n_lv234`）。
+  - 该 N2N 同时作为：(1) NTN 的 Ĉ 生成器；(2) 公平 OOD 基线。两者训练数据一致，只差 NTN 框架。
+  - 原全层级 N2N 不能用：既会泄漏 level1 给 NTN，也不能当 OOD 基线。
+- 代码：给 `legacy_pairs.py` 的 `CrossLevelIntervalPairDataset` / `create_train_dataset` /
+  `SpeckleN2NLogDataset` 加 `include_levels`，并给 `train_n2n.py` 加 `--levels`。py_compile 通过。
+- 评估计划（待写脚本）：level1 上对比 N2N-baseline vs NTN，用同场景最高叠加层(level4)的多帧均值当伪 GT
+  算 PSNR/SSIM，并出血管局部放大对比图（图像效果为准）。
+

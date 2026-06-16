@@ -34,27 +34,30 @@ NTN/
 └── README.md
 ```
 
-## 最小流程
+## 泛化对照实验协议（重要）
 
-如果要先重新训练 N2N baseline，使用 `train_n2n.py`。该入口保留原项目的核心训练策略：
-`AdamW(lr_final 起步, weight_decay=0.01)`，每个 batch 调用 `OneCycleLR`，
-先 warmup 到 `lr_max`，再 cosine annealing 回到 `lr_final`。
-`train_n2n.py`、`train_gaussian_expert.py`、`train_translator.py` 都会在检测到多张
-CUDA GPU 时默认启用 `DataParallel`，如需强制单卡可加 `--data_parallel 0`。
+为了公平地证明「NTN 比普通 N2N 更泛化」，**N2N 基线必须和 NTN 用完全相同的训练数据**
+（level 2/3/4），把最噪的 **level1 留作 OOD 测试**。这个 N2N 同时担任两个角色：
+(1) NTN 训练时的 Ĉ 生成器（`--bootstrap_checkpoint`）；(2) 对照基线本身。
 
-```powershell
-python train_n2n.py `
-  --data_path /mnt2/songyd/5x5 `
-  --data_subdir npy `
-  --strict_data_subdir 1 `
-  --intensity_transform log1p `
-  --crop_size 512 `
-  --batch_size 48 `
-  --epochs 5 `
-  --lr 0.01 `
-  --lr_final 0.0005 `
-  --warmup_pct 0.1
+> 注意：原有的 N2N checkpoint 是在**全部层级（含 level1）**上用跨层级配对训练的，
+> 既不能当 OOD 基线，也会把 level1 信息泄漏进 NTN，**必须重训**。
+
+### Step 0：重训 N2N（仅 level 2/3/4）
+
+`train_n2n.py` 保留原训练策略：`AdamW` + `OneCycleLR`（warmup→cosine）。三个训练入口在
+多 GPU 时默认启用 `DataParallel`，强制单卡加 `--data_parallel 0`。
+
+```bash
+python train_n2n.py \
+  --data_path /mnt2/songyd/5x5 --data_subdir npy --strict_data_subdir 1 \
+  --levels 2 3 4 \
+  --intensity_transform log1p --crop_size 512 --batch_size 48 \
+  --epochs 5 --lr 0.01 --lr_final 0.0005 --warmup_pct 0.1 \
+  --save_dir results/checkpoints/n2n_lv234
 ```
+
+之后所有命令里的 `<N2N_CKPT>` 即 `results/checkpoints/n2n_lv234/model_epoch_5.pth`。
 
 先训练 Gaussian expert `D_prime`（盲高斯专家，Ĉ=N2N(I1)，σ 覆盖实测真实噪声跨度；
 用 `--levels 2 3 4` 把最噪的 level1 留作 OOD 测试）：
@@ -63,7 +66,7 @@ python train_n2n.py `
 python train_gaussian_expert.py \
   --data_path /mnt2/songyd/5x5 --data_subdirs npy --strict_data_subdir 1 \
   --levels 2 3 4 \
-  --bootstrap_checkpoint results/checkpoints/n2n_5x5_log1p/model_epoch_5.pth \
+  --bootstrap_checkpoint results/checkpoints/n2n_lv234/model_epoch_5.pth \
   --intensity_transform log1p \
   --sigma_min 0.08 --sigma_max 0.6 \
   --epochs 5
@@ -76,7 +79,7 @@ explicit 后半段才启用）：
 python train_translator.py \
   --data_path /mnt2/songyd/5x5 --data_subdirs npy --strict_data_subdir 1 \
   --levels 2 3 4 \
-  --bootstrap_checkpoint results/checkpoints/n2n_5x5_log1p/model_epoch_5.pth \
+  --bootstrap_checkpoint results/checkpoints/n2n_lv234/model_epoch_5.pth \
   --gaussian_expert_checkpoint results/checkpoints/gaussian_expert/gaussian_expert_epoch_5.pth \
   --intensity_transform log1p \
   --implicit_target pseudo_clean \

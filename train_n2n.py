@@ -128,6 +128,7 @@ def build_loaders(args):
         strict_data_subdir=bool(args.strict_data_subdir),
         data_index_min=args.data_index_min,
         data_index_max=args.data_index_max,
+        include_levels=tuple(args.levels) if args.levels else None,
     )
 
     total_size = len(full_dataset)
@@ -294,6 +295,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--strict_data_subdir", type=int, default=1)
     parser.add_argument("--data_index_min", type=int, default=-1)
     parser.add_argument("--data_index_max", type=int, default=-1)
+    parser.add_argument("--levels", type=int, nargs="*", default=None,
+                        help="只用这些叠加层级 5x5xN 的 N 训练（如 --levels 2 3 4 把 level1 留作 OOD 对照）。")
     parser.add_argument("--intervals", type=int, nargs="*", default=[5, 7, 9])
     parser.add_argument("--save_dir", type=str, default="results/checkpoints/n2n")
     parser.add_argument("--log_dir", type=str, default="results/logs/n2n")
