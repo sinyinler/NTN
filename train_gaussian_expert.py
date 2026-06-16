@@ -44,6 +44,7 @@ def build_dataset(args) -> N2NBootstrapTripletDataset:
         strict_data_subdir=bool(args.strict_data_subdir),
         data_index_min=args.data_index_min if args.data_index_min >= 0 else None,
         data_index_max=args.data_index_max if args.data_index_max >= 0 else None,
+        include_levels=tuple(args.levels) if args.levels else None,
         intensity_transform=args.intensity_transform,
         boxcox_lam=args.boxcox_lam,
         boxcox_eps=args.boxcox_eps,
@@ -191,6 +192,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--strict_data_subdir", type=int, default=0)
     parser.add_argument("--data_index_min", type=int, default=-1)
     parser.add_argument("--data_index_max", type=int, default=-1)
+    parser.add_argument("--levels", type=int, nargs="*", default=None,
+                        help="只用这些叠加层级 5x5xN 的 N（如 --levels 2 3 4 把 level1 留作 OOD 测试）。")
     parser.add_argument("--intervals", type=int, nargs="*", default=[5, 7, 9])
     parser.add_argument("--crop_size", type=int, default=128)
     parser.add_argument("--random_crop", type=int, default=1)
@@ -204,8 +207,10 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--lambda_min", type=float, default=-0.3)
     parser.add_argument("--lambda_max", type=float, default=0.2)
     parser.add_argument("--lambda_candidates", type=float, nargs="*", default=None)
-    parser.add_argument("--sigma_min", type=float, default=0.0)
-    parser.add_argument("--sigma_max", type=float, default=0.15)
+    # 盲高斯区间：覆盖真实噪声跨度（log1p 域实测 level4≈0.10 ~ level1≈0.43，含余量到 0.6），
+    # 且下界远离 0，堵死翻译器 T 学恒等映射的捷径。见 experiment_log.md 噪声测量记录。
+    parser.add_argument("--sigma_min", type=float, default=0.08)
+    parser.add_argument("--sigma_max", type=float, default=0.6)
     parser.add_argument("--epochs", type=int, default=5)
     parser.add_argument("--batch_size", type=int, default=8)
     parser.add_argument("--num_workers", type=int, default=0)

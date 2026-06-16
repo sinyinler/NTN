@@ -78,6 +78,7 @@ class N2NBootstrapTripletDataset(Dataset):
         strict_data_subdir: bool = False,
         data_index_min: int | None = None,
         data_index_max: int | None = None,
+        include_levels: tuple[int, ...] | None = None,
         intensity_transform: str = "log1p",
         boxcox_lam: float = -0.15,
         boxcox_eps: float = 1e-6,
@@ -113,6 +114,7 @@ class N2NBootstrapTripletDataset(Dataset):
             strict_data_subdir=strict_data_subdir,
             data_index_min=data_index_min,
             data_index_max=data_index_max,
+            include_levels=tuple(int(x) for x in include_levels) if include_levels else None,
         )
         self.records: list[SequenceRecord] = []
         self.items: list[tuple[int, int]] = []

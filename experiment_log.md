@@ -50,9 +50,36 @@
   - 训练模型和冻结的 N2N/D_prime 辅助模型都在多 GPU 可用时包成 `torch.nn.DataParallel`。
 - 目的：让 N2N、D_prime、T 三个阶段的硬件使用习惯保持一致。
 
-## 2026-06-14 ?? D_prime/T ??? loss ??
+## 2026-06-14 (注：本条原始记录因编码问题为乱码) D'/T 训练显示实时 loss
 
-- ???`train_gaussian_expert.py` ? `train_translator.py` ?? epoch ????? loss?? epoch ??? `tail -f` ????? loss?
-- ???`D_prime` ??????????? `loss`?epoch ??? `avg` ? `lr`?`T` ?????????? `loss`??? `avg`?`implicit`?`explicit` ? `lr`?
-- ?????????? loss ????????? NaN????????????
+- 在 `train_gaussian_expert.py` / `train_translator.py` 的进度条上显示每个 batch 的 loss，
+  方便 `tail -f` 观察。D' 显示 loss/avg/lr；T 显示 loss/avg/implicit/explicit/lr。
+
+## 2026-06-16 复盘诊断 + 真实噪声测量 + 按论文重构
+
+- 背景：之前版本「效果差、几乎无泛化」。对照论文重新审查，确认病根**不在数据/去噪网络**
+  （N2N 本身效果好，数据 `/mnt2/songyd/5x5` 是干净的同场景多帧），而在 NTN 翻译设计：
+  1. D' 被做成「盲高斯 + σ 上限 0.15」，恒等映射成捷径、且 σ 覆盖不到真实噪声；
+  2. implicit 用 I2、explicit 用糊均值 Ĉ，锚不一致，且 `T(I1)−Ĉ` 含血管结构 → explicit 误伤血管；
+  3. explicit loss 从第 0 步全程开（论文应后 50% 才开）；
+  4. lr 0.01 偏高、GIBlock 注入初值为 0 形同虚设。
+
+- 新增 `scripts/measure_noise.py`（+ 抽出无 torch 依赖的 `data/discovery.py`），
+  在 log1p 域用同场景相邻帧差估噪声 `σ=std/MAD(f_{k+1}-f_k)/√2`，按叠加层级分组。
+- **实测 `/mnt2/songyd/5x5`（log1p 域 sigma_mad 中位数）**：
+  - level1=0.428, level2=0.212, level3=0.138, level4=0.102，几乎完美按 1/N 衰减；
+  - 真实噪声跨度 ~4 倍（0.10 ~ 0.43，个别到 0.57），signal_std≈0.56~0.63。
+- **据此确定的设计决定**：
+  - 「泛化」验证方式：用 level 2/3/4 训练，**留出最噪的 level1 作 OOD 测试**。
+  - D' 改为在**盲区间 σ∈[0.08, 0.6]** 上训练（覆盖真实跨度、下界远离 0 堵死恒等捷径），
+    保留论文「经验 std」的 explicit 写法（T 保幅度，只做高斯化 + 去相关）。
+  - Ĉ 改用 **N2N(I1)**（`--bootstrap_checkpoint`），内容对齐 → `T(I1)−Ĉ` 才是纯噪声；
+    implicit 与 explicit 同锚（`--implicit_target pseudo_clean`）。
+  - explicit loss 延迟到训练过半启用（`--explicit_start_frac 0.5`）。
+  - T 的 lr 对齐论文 1e-3→1e-5 cosine；GIBlock `init_noise_scale=0.1` 让注入真正生效。
+- 代码改动：`data/discovery.py` 加 `include_levels`；数据集 + 两个 train 脚本加 `--levels`；
+  D' 默认 σ∈[0.08,0.6]；T 加 explicit 延迟、改默认锚与 lr；`models/ntn.py` GIBlock 非零初值。
+- 验证：py_compile 全过；`include_levels` 过滤逻辑单元测试通过（合成目录树）。
+- 待办：需要用户提供服务器上的 N2N checkpoint 路径以跑 stage-1/2；确认各层级是否共享 scene 索引
+  （决定 level1 OOD 评估能否用同场景高叠加帧当参考）。结果（指标+血管放大图）待训练后回填。
 

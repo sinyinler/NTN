@@ -80,24 +80,39 @@ def discover_sequence_dirs(
     strict_data_subdir: bool = False,
     data_index_min: int | None = None,
     data_index_max: int | None = None,
+    include_levels: tuple[int, ...] | None = None,
 ) -> list[Path]:
     """发现可形成 N2N pair 的具体帧序列目录。
 
     兼容两类数据：
     1. root 本身就是一个帧序列目录；
     2. 原项目的 mix/5x5x100/0/npy 这类层级结构。
+
+    include_levels 不为空时，只保留叠加层级 5x5x{N} 的 N 落在该集合里的序列，
+    用于「按层级划分 train/test」（例如训练用 level 2/3/4、把 level1 留作 OOD 测试）。
+    此时无法解析层级的目录（flat / 非 5x5xN）一律跳过，避免把未知层级混进来。
     """
 
     root = Path(root)
     if list_supported_files(root):
+        if include_levels is not None:
+            raise ValueError(
+                f"--levels was given but {root} is a single flat sequence with no 5x5xN level info."
+            )
         return [root]
 
+    levels_set = set(include_levels) if include_levels is not None else None
     sequence_dirs: list[Path] = []
     for level_dir in sorted((p for p in root.iterdir() if p.is_dir()), key=natural_key):
         level = parse_level_name(level_dir.name)
         if level is None:
+            if levels_set is not None:
+                continue
             if not strict_data_subdir and list_supported_files(level_dir):
                 sequence_dirs.append(level_dir)
+            continue
+
+        if levels_set is not None and level not in levels_set:
             continue
 
         for scene_dir in sorted((p for p in level_dir.iterdir() if p.is_dir()), key=natural_key):
@@ -110,7 +125,9 @@ def discover_sequence_dirs(
                 if list_supported_files(candidate):
                     sequence_dirs.append(candidate)
 
-    if sequence_dirs:
+    if sequence_dirs or levels_set is not None:
+        # 指定了层级却没找到任何序列时，直接返回空，交给上层报错；
+        # 不走 rglob 兜底，以免把被过滤掉的层级又递归捞回来。
         return sequence_dirs
 
     for child in sorted((p for p in root.rglob("*") if p.is_dir()), key=natural_key):

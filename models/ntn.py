@@ -74,11 +74,13 @@ class NAFBlock(nn.Module):
 class GaussianInjectionBlock(nn.Module):
     """GIBlock: NAFBlock 后注入可学习强度的 Gaussian noise。"""
 
-    def __init__(self, channels: int, inject_sigma: float = 1.0):
+    def __init__(self, channels: int, inject_sigma: float = 1.0, init_noise_scale: float = 0.1):
         super().__init__()
         self.naf = NAFBlock(channels)
         self.inject_sigma = float(inject_sigma)
-        self.noise_scale = nn.Parameter(torch.zeros(1, channels, 1, 1))
+        # 论文强调 Gaussian 注入是 NTN 的关键设计。noise_scale 用小正值初始化（而非 0），
+        # 让 GIBlock 从训练第一步就真正注入高斯先验，可学习强度后续再自适应调整。
+        self.noise_scale = nn.Parameter(torch.full((1, channels, 1, 1), float(init_noise_scale)))
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         x = self.naf(x)

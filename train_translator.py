@@ -45,6 +45,7 @@ def build_dataset(args) -> N2NBootstrapTripletDataset:
         strict_data_subdir=bool(args.strict_data_subdir),
         data_index_min=args.data_index_min if args.data_index_min >= 0 else None,
         data_index_max=args.data_index_max if args.data_index_max >= 0 else None,
+        include_levels=tuple(args.levels) if args.levels else None,
         intensity_transform=args.intensity_transform,
         boxcox_lam=args.boxcox_lam,
         boxcox_eps=args.boxcox_eps,
@@ -140,7 +141,13 @@ def train(args) -> None:
     metadata.update({"dataset_size": len(dataset), "train_size": train_size, "val_size": val_size})
     (save_dir / "run_config.json").write_text(json.dumps(metadata, indent=2, ensure_ascii=False), encoding="utf-8")
 
-    def forward_batch(batch: dict, train_mode: bool) -> dict[str, torch.Tensor]:
+    # explicit loss 延迟启用：论文附录指出早期 translated noise 偏差大、会破坏优化，
+    # 因此前 explicit_start_frac 比例的迭代只用 implicit，之后再叠加 alpha * explicit。
+    total_steps = max(1, len(train_loader) * args.epochs)
+    explicit_start_step = int(total_steps * args.explicit_start_frac)
+    global_step = 0
+
+    def forward_batch(batch: dict, train_mode: bool, explicit_scale: float) -> dict[str, torch.Tensor]:
         i1 = batch["input"].to(device)
         i2 = batch["target"].to(device)
         pseudo_clean = batch["pseudo_clean"].to(device)
@@ -158,9 +165,11 @@ def train(args) -> None:
         pred = gaussian_expert(append_condition_channel(translated, condition))
         implicit_target = i2 if args.implicit_target == "i2" else pseudo_clean
         loss_implicit = implicit_criterion(pred, implicit_target)
+        # translated noise 以 Ĉ(=N2N(I1) 或多帧均值) 为锚；用 N2N 输出时 Ĉ 与 I1 内容对齐，
+        # translated_noise 才是「纯噪声」，explicit 的高斯化约束不会误伤血管结构。
         translated_noise = translated - pseudo_clean
         loss_explicit, loss_spatial, loss_freq = explicit_criterion(translated_noise)
-        loss = loss_implicit + args.alpha * loss_explicit
+        loss = loss_implicit + explicit_scale * loss_explicit
         return {
             "loss": loss,
             "loss_implicit": loss_implicit.detach(),
@@ -174,7 +183,9 @@ def train(args) -> None:
         totals = {"loss": 0.0, "loss_implicit": 0.0, "loss_explicit": 0.0, "loss_spatial": 0.0, "loss_freq": 0.0}
         pbar = tqdm(train_loader, desc=f"T epoch {epoch}/{args.epochs}")
         for step, batch in enumerate(pbar, start=1):
-            out = forward_batch(batch, train_mode=True)
+            global_step += 1
+            explicit_scale = args.alpha if global_step >= explicit_start_step else 0.0
+            out = forward_batch(batch, train_mode=True, explicit_scale=explicit_scale)
             optimizer.zero_grad(set_to_none=True)
             out["loss"].backward()
             if args.grad_clip > 0:
@@ -190,6 +201,7 @@ def train(args) -> None:
                     "avg": f"{totals['loss'] / step:.6f}",
                     "impl": f"{float(out['loss_implicit'].item()):.6f}",
                     "expl": f"{float(out['loss_explicit'].item()):.6f}",
+                    "ex_on": int(explicit_scale > 0),
                     "lr": f"{current_lr:.3g}",
                 }
             )
@@ -200,7 +212,7 @@ def train(args) -> None:
             translator.eval()
             with torch.no_grad():
                 for batch in val_loader:
-                    val_loss += float(forward_batch(batch, train_mode=False)["loss"].item())
+                    val_loss += float(forward_batch(batch, train_mode=False, explicit_scale=args.alpha)["loss"].item())
             val_loss /= max(1, len(val_loader))
 
         print(
@@ -224,13 +236,17 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--strict_data_subdir", type=int, default=0)
     parser.add_argument("--data_index_min", type=int, default=-1)
     parser.add_argument("--data_index_max", type=int, default=-1)
+    parser.add_argument("--levels", type=int, nargs="*", default=None,
+                        help="只用这些叠加层级 5x5xN 的 N（如 --levels 2 3 4 把 level1 留作 OOD 测试）。")
     parser.add_argument("--intervals", type=int, nargs="*", default=[5, 7, 9])
     parser.add_argument("--crop_size", type=int, default=128)
     parser.add_argument("--random_crop", type=int, default=1)
     parser.add_argument("--pseudo_clean_frames", type=int, default=0)
-    parser.add_argument("--bootstrap_checkpoint", type=str, default="", help="Optional trained N2N model used as C_hat generator.")
+    parser.add_argument("--bootstrap_checkpoint", type=str, default="",
+                        help="已训练的 N2N checkpoint，用作 Ĉ 生成器（推荐）：Ĉ=N2N(I1)，与 I1 内容对齐。")
     parser.add_argument("--gaussian_expert_checkpoint", type=str, required=True)
-    parser.add_argument("--implicit_target", choices=["i2", "pseudo_clean"], default="i2")
+    parser.add_argument("--implicit_target", choices=["i2", "pseudo_clean"], default="pseudo_clean",
+                        help="implicit loss 的目标。配合 --bootstrap_checkpoint 时 pseudo_clean 即 N2N(I1)，与 explicit 同锚。")
     parser.add_argument("--intensity_transform", choices=["none", "log1p", "boxcox", "learned_vst"], default="log1p")
     parser.add_argument("--vst_lut", type=str, default="")
     parser.add_argument("--boxcox_lam", type=float, default=-0.15)
@@ -245,16 +261,19 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--residual_scale", type=float, default=1.0)
     parser.add_argument("--alpha", type=float, default=5e-2)
     parser.add_argument("--beta", type=float, default=2e-3)
+    parser.add_argument("--explicit_start_frac", type=float, default=0.5,
+                        help="explicit loss 从训练进度的该比例处开始启用（论文：后 50%）。")
     parser.add_argument("--highpass_ratio", type=float, default=0.0)
     parser.add_argument("--aug_sigma", type=float, default=0.0)
     parser.add_argument("--epochs", type=int, default=5)
     parser.add_argument("--batch_size", type=int, default=8)
     parser.add_argument("--num_workers", type=int, default=0)
     parser.add_argument("--val_fraction", type=float, default=0.02)
-    parser.add_argument("--lr", type=float, default=0.01, help="Compatibility alias for lr_max.")
+    # 小翻译器 T 对齐论文：lr 1e-3 -> 1e-5 cosine 退火（原默认 0.01 偏高、易学崩）。
+    parser.add_argument("--lr", type=float, default=1e-3, help="Compatibility alias for lr_max.")
     parser.add_argument("--lr_max", type=float, default=None)
-    parser.add_argument("--lr_final", type=float, default=0.0005)
-    parser.add_argument("--warmup_pct", type=float, default=0.1)
+    parser.add_argument("--lr_final", type=float, default=1e-5)
+    parser.add_argument("--warmup_pct", type=float, default=0.05)
     parser.add_argument("--weight_decay", type=float, default=1e-2)
     parser.add_argument("--charbonnier_eps", type=float, default=1e-3)
     parser.add_argument("--grad_clip", type=float, default=1.0)

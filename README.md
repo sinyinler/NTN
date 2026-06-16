@@ -56,29 +56,36 @@ python train_n2n.py `
   --warmup_pct 0.1
 ```
 
-先训练 Gaussian expert `D_prime`：
+先训练 Gaussian expert `D_prime`（盲高斯专家，Ĉ=N2N(I1)，σ 覆盖实测真实噪声跨度；
+用 `--levels 2 3 4` 把最噪的 level1 留作 OOD 测试）：
 
-```powershell
-python train_gaussian_expert.py `
-  --data_path D:\Desktop\lightweight_G\mix `
-  --intensity_transform log1p `
-  --pseudo_clean_frames 0 `
-  --sigma_max 0.15 `
+```bash
+python train_gaussian_expert.py \
+  --data_path /mnt2/songyd/5x5 --data_subdirs npy --strict_data_subdir 1 \
+  --levels 2 3 4 \
+  --bootstrap_checkpoint results/checkpoints/n2n_5x5_log1p/model_epoch_5.pth \
+  --intensity_transform log1p \
+  --sigma_min 0.08 --sigma_max 0.6 \
   --epochs 5
 ```
 
-再冻结 `D_prime` 训练 Noise Translator `T`：
+再冻结 `D_prime` 训练 Noise Translator `T`（implicit/explicit 同锚 Ĉ=N2N(I1)，
+explicit 后半段才启用）：
 
-```powershell
-python train_translator.py `
-  --data_path D:\Desktop\lightweight_G\mix `
-  --gaussian_expert_checkpoint results\checkpoints\gaussian_expert\gaussian_expert_epoch_5.pth `
-  --intensity_transform log1p `
-  --implicit_target i2 `
-  --alpha 0.05 `
-  --beta 0.002 `
+```bash
+python train_translator.py \
+  --data_path /mnt2/songyd/5x5 --data_subdirs npy --strict_data_subdir 1 \
+  --levels 2 3 4 \
+  --bootstrap_checkpoint results/checkpoints/n2n_5x5_log1p/model_epoch_5.pth \
+  --gaussian_expert_checkpoint results/checkpoints/gaussian_expert/gaussian_expert_epoch_5.pth \
+  --intensity_transform log1p \
+  --implicit_target pseudo_clean \
+  --alpha 0.05 --beta 0.002 --explicit_start_frac 0.5 \
   --epochs 5
 ```
+
+> 噪声水平先用 `python scripts/measure_noise.py --data_path /mnt2/songyd/5x5 --data_subdirs npy`
+> 实测确定。当前 σ 区间 `[0.08, 0.6]` 即依据 log1p 域实测（level4≈0.10 ~ level1≈0.43）。
 
 推理：
 
