@@ -16,6 +16,9 @@
     "sigma_max": 0.6,
     "bootstrap_checkpoint": "<N2N checkpoint>  # C_hat = N2N(I1) 作为 clean 目标",
     "note": "盲高斯区间覆盖真实跨度且下界远离 0，堵死 T 学恒等映射",
+    "crop_size": 512,
+    "batch_size": 48,
+    "crop_batch_note": "与 N2N 对齐：同网络/同数据/同任务，BN 统计稳、用满 GPU",
     "lr": 0.01
   },
   "translator": {
@@ -29,6 +32,9 @@
     "beta": 0.002,
     "explicit_start_frac": 0.5,
     "highpass_ratio": 0.0,
+    "crop_size": 256,
+    "batch_size": 4,
+    "crop_batch_note": "对齐论文：crop256 利于 explicit 分布统计；batch 小因梯度穿过冻结 D' 显存重",
     "lr_max": 0.001,
     "lr_final": 0.00001
   }

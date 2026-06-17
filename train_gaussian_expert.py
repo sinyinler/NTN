@@ -196,7 +196,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--levels", type=int, nargs="*", default=None,
                         help="只用这些叠加层级 5x5xN 的 N（如 --levels 2 3 4 把 level1 留作 OOD 测试）。")
     parser.add_argument("--intervals", type=int, nargs="*", default=[5, 7, 9])
-    parser.add_argument("--crop_size", type=int, default=128)
+    # D' 与 N2N 同网络、同数据、同任务，crop/batch 对齐 N2N（512/48）：上下文一致、BN 统计稳、用满 GPU。
+    parser.add_argument("--crop_size", type=int, default=512)
     parser.add_argument("--random_crop", type=int, default=1)
     parser.add_argument("--pseudo_clean_frames", type=int, default=0, help="0 means average all frames in the sequence.")
     parser.add_argument("--bootstrap_checkpoint", type=str, default="", help="Optional trained N2N model used as C_hat generator.")
@@ -213,7 +214,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--sigma_min", type=float, default=0.08)
     parser.add_argument("--sigma_max", type=float, default=0.6)
     parser.add_argument("--epochs", type=int, default=5)
-    parser.add_argument("--batch_size", type=int, default=8)
+    parser.add_argument("--batch_size", type=int, default=48)
     parser.add_argument("--num_workers", type=int, default=8)
     parser.add_argument("--val_fraction", type=float, default=0.02)
     parser.add_argument("--lr", type=float, default=0.01, help="Compatibility alias for lr_max.")
