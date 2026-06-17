@@ -32,9 +32,9 @@
     "beta": 0.002,
     "explicit_start_frac": 0.5,
     "highpass_ratio": 0.0,
-    "crop_size": 256,
-    "batch_size": 4,
-    "crop_batch_note": "对齐论文：crop256 利于 explicit 分布统计；batch 小因梯度穿过冻结 D' 显存重",
+    "crop_size": 512,
+    "batch_size": 12,
+    "crop_batch_note": "crop512 利于 explicit 分布统计；两张 A5000(24G) 实测 512/12 可跑（论文为 256/4）",
     "lr_max": 0.001,
     "lr_final": 0.00001
   }

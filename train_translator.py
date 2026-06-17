@@ -240,9 +240,9 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--levels", type=int, nargs="*", default=None,
                         help="只用这些叠加层级 5x5xN 的 N（如 --levels 2 3 4 把 level1 留作 OOD 测试）。")
     parser.add_argument("--intervals", type=int, nargs="*", default=[5, 7, 9])
-    # T 阶段对齐论文：crop 256（explicit loss 的分布统计需要足够大的 patch）、batch 小
-    # （梯度要穿过冻结的 D'，T+D' 激活同时驻留，显存重）。24GB 有余量可上调 batch。
-    parser.add_argument("--crop_size", type=int, default=256)
+    # T 阶段 crop 越大，explicit loss 估噪声分布越准。论文用 256/batch4；本项目两张 A5000(24G)
+    # 实测 512/batch12 可跑，故默认拉到 512/12（显存吃紧再降 batch；梯度要穿过冻结 D'，显存偏重）。
+    parser.add_argument("--crop_size", type=int, default=512)
     parser.add_argument("--random_crop", type=int, default=1)
     parser.add_argument("--pseudo_clean_frames", type=int, default=0)
     parser.add_argument("--bootstrap_checkpoint", type=str, default="",
@@ -269,7 +269,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--highpass_ratio", type=float, default=0.0)
     parser.add_argument("--aug_sigma", type=float, default=0.0)
     parser.add_argument("--epochs", type=int, default=5)
-    parser.add_argument("--batch_size", type=int, default=4)
+    parser.add_argument("--batch_size", type=int, default=12)
     parser.add_argument("--num_workers", type=int, default=8)
     parser.add_argument("--val_fraction", type=float, default=0.02)
     # 小翻译器 T 对齐论文：lr 1e-3 -> 1e-5 cosine 退火（原默认 0.01 偏高、易学崩）。
