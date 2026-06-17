@@ -88,6 +88,7 @@ class N2NBootstrapTripletDataset(Dataset):
         lambda_candidates: list[float] | tuple[float, ...] | None = None,
         vst_lut: str = "",
         augment: bool = True,
+        compute_pseudo_clean: bool = True,
     ):
         self.root_dir = root_dir
         self.intervals = [int(x) for x in intervals if int(x) > 0]
@@ -96,6 +97,9 @@ class N2NBootstrapTripletDataset(Dataset):
         self.crop_size = int(crop_size)
         self.random_crop = bool(random_crop)
         self.pseudo_clean_frames = int(pseudo_clean_frames)
+        # 训练时若用 N2N(I1) 当 Ĉ（--bootstrap_checkpoint），数据集这里算的多帧均值会被覆盖丢弃。
+        # 长序列下「每个样本读全序列帧求均值」是巨大的无用 I/O，故此时关掉，Ĉ 用 I1 占位。
+        self.compute_pseudo_clean = bool(compute_pseudo_clean)
         self.lambda_conditioned = bool(lambda_conditioned) and intensity_transform == "boxcox"
         self.lambda_min = float(lambda_min)
         self.lambda_max = float(lambda_max)
@@ -165,8 +169,12 @@ class N2NBootstrapTripletDataset(Dataset):
 
         i1 = load_2d(files[frame_idx])
         i2 = load_2d(files[target_idx])
-        pseudo_stack = [load_2d(files[j]) for j in self._pseudo_indices(frame_idx, len(files))]
-        chat = np.mean(np.stack(pseudo_stack, axis=0), axis=0).astype(np.float32, copy=False)
+        if self.compute_pseudo_clean:
+            pseudo_stack = [load_2d(files[j]) for j in self._pseudo_indices(frame_idx, len(files))]
+            chat = np.mean(np.stack(pseudo_stack, axis=0), axis=0).astype(np.float32, copy=False)
+        else:
+            # 占位：训练脚本会用 N2N(I1) 覆盖它；这里不再读全序列，避免无用 I/O。
+            chat = i1.copy()
 
         if self.random_crop:
             i1, i2, chat = random_crop_same([i1, i2, chat], self.crop_size)

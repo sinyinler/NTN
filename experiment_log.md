@@ -97,3 +97,13 @@
 - 评估计划（待写脚本）：level1 上对比 N2N-baseline vs NTN，用同场景最高叠加层(level4)的多帧均值当伪 GT
   算 PSNR/SSIM，并出血管局部放大对比图（图像效果为准）。
 
+## 2026-06-17 修复 D'/T 数据加载性能灾难
+
+- 现象：Step0 的 N2N 正常（4.75 s/it）；但 D' 阶段慢到 169 s/it、ETA 335h，且显存几乎不用 → GPU 空转、卡在读盘。
+- 根因：`N2NBootstrapTripletDataset` 默认 `pseudo_clean_frames=0` = 每个样本把**整条序列(~500 帧)**读出求均值当 Ĉ；
+  而我们用 `--bootstrap_checkpoint` 时 Ĉ 会被 N2N(I1) 覆盖，这 ~500 帧/样本读取全是无用功；叠加 `num_workers=0` 单进程读盘。
+- 修复（代码）：数据集加 `compute_pseudo_clean` 开关，train 脚本在提供 bootstrap 时自动置 False（Ĉ 用 I1 占位、不读全序列）；
+  `train_gaussian_expert/train_translator` 的 `--num_workers` 默认 0→8。
+- 临时绕过（无需改码）：`--pseudo_clean_frames 1 --num_workers 8`，每样本只读 3 帧。
+- 影响：仅性能，不改训练语义（Ĉ 始终是 N2N(I1)）。
+

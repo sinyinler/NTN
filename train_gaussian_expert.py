@@ -54,6 +54,7 @@ def build_dataset(args) -> N2NBootstrapTripletDataset:
         lambda_candidates=args.lambda_candidates,
         vst_lut=args.vst_lut,
         augment=True,
+        compute_pseudo_clean=not bool(args.bootstrap_checkpoint),
     )
 
 
@@ -213,7 +214,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--sigma_max", type=float, default=0.6)
     parser.add_argument("--epochs", type=int, default=5)
     parser.add_argument("--batch_size", type=int, default=8)
-    parser.add_argument("--num_workers", type=int, default=0)
+    parser.add_argument("--num_workers", type=int, default=8)
     parser.add_argument("--val_fraction", type=float, default=0.02)
     parser.add_argument("--lr", type=float, default=0.01, help="Compatibility alias for lr_max.")
     parser.add_argument("--lr_max", type=float, default=None)
