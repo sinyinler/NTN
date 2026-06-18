@@ -117,3 +117,13 @@
 - 补充：T 在两张 A5000(24G) 上实测 `crop 512 / batch 12` 可跑，遂默认拉到 512/12
   （比论文 256/4 更大，explicit loss 分布统计更准）。
 
+## 2026-06-18 新增 OOD 泛化评估脚本 eval_ood.py
+
+- 目的：在留出的最噪层 level1 上对比 N2N 基线 vs NTN(T->D')，量化泛化增益。
+- 方法：同场景最高叠加层(默认 level4)多帧在 raw 域取均值作伪 GT；N2N 与 NTN 都在 log1p 域、
+  对同一伪 GT 算 PSNR/SSIM（公平）。SSIM 优先用 skimage 窗口化，缺失则退回全图近似。
+- 输出：`results/eval_ood/metrics_level1.json`（含 NTN-N2N 的 PSNR/SSIM 增益）+
+  `results/eval_ood/compare/scene*_frame0.png`（noisy/N2N/NTN/GT 四联 + 血管中心放大）。
+- 验证：py_compile 通过；level/scene 路径解析在 5x5x{N}/{scene}/npy 结构上正确。
+- 注意：按 skill，指标只是参考，**最终以对比图的血管细节为准**（是否过平滑、细小血管是否被磨掉）。
+
