@@ -11,3 +11,7 @@ results/eval/*
 !results/checkpoints/.gitkeep
 !results/images/.gitkeep
 !results/eval/.gitkeep
+
+# PPT 中间渲染（可由 build_deck.py 重生成）
+ppt_assets/render/
+ppt_assets/page*.png

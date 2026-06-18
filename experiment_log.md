@@ -154,3 +154,12 @@
 - 结论：**NTN 翻译机制在 BFI 上成立且有效**，NTN 在 OOD 上确实优于同数据训练的 N2N。
   当前结果已可写入 PPT。换"多帧均值目标"重训为可选的锦上添花（潜在改善细血管保真/扩大增益）。
 
+## 2026-06-18 汇报 PPT 收口
+
+- 产出 `NTN_复现汇报.pptx`（10 页，面向无背景听众）：标题 / 动机 / 方法定位 / 核心思路(论文Fig.1) /
+  方法框架(论文Fig.3) / 我们的改造 / 结果①level1定量 / 结果②机制硬证据 / 结果③远OOD定性 / 结论。
+- 生成脚本 `ppt_assets/build_deck.py`（python-pptx + matplotlib），结果图表从本 log 数字生成。
+- 视觉 QA：经 PowerPoint 导出 10 张 PNG 逐张检查，无溢出/重叠。
+- 待补：第 9 页（远 OOD 定性）留了占位框，需把服务器 `results/images/ood_compare/comparison/*.png`
+  插入；其余页已完整。
+
