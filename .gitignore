@@ -15,3 +15,6 @@ results/eval/*
 # PPT 中间渲染（可由 build_deck.py 重生成）
 ppt_assets/render/
 ppt_assets/page*.png
+
+# PowerPoint/Office 临时锁文件
+~$*
