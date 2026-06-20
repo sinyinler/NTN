@@ -162,7 +162,16 @@ def main(args) -> None:
     scene_map = build_scene_index(args.data_path, args.data_subdirs, bool(args.strict_data_subdir))
     all_levels = sorted({lv for d in scene_map.values() for lv in d})
     gt_level = args.gt_level if args.gt_level > 0 else max(all_levels)
-    print(f"[INFO] levels present={all_levels}; eval_level={args.eval_level}, gt_level={gt_level}, SSIM={SSIM_BACKEND}")
+
+    # 可选：用一张固定的 reference.npy 当 GT（比同场景 level4 多帧均值更干净）。
+    # 它必须与被评估场景像素对齐，因此通常配合 --scenes 限定到对应场景（如 --scenes 0）。
+    fixed_gt_z = None
+    if args.reference_npy:
+        fixed_gt_z = log1p_np(load_2d(Path(args.reference_npy)))
+        print(f"[INFO] 使用固定参考 GT: {args.reference_npy}  (忽略 gt_level 多帧均值)")
+    scene_filter = set(args.scenes) if args.scenes else None
+    print(f"[INFO] levels present={all_levels}; eval_level={args.eval_level}, "
+          f"gt={'reference.npy' if fixed_gt_z is not None else 'level%d-mean'%gt_level}, SSIM={SSIM_BACKEND}")
 
     rows = {"noisy": [], "n2n": [], "ntn": []}  # 每项: (psnr, ssim)
     per_scene = []
@@ -172,13 +181,19 @@ def main(args) -> None:
     scenes = sorted(scene_map.keys(), key=lambda s: int(s) if s.isdigit() else s)
     for scene in scenes:
         levels = scene_map[scene]
-        if args.eval_level not in levels or gt_level not in levels:
+        if scene_filter is not None and scene not in scene_filter:
+            continue
+        if args.eval_level not in levels:
+            continue
+        if fixed_gt_z is None and gt_level not in levels:
             continue
         if args.max_scenes > 0 and len(per_scene) >= args.max_scenes:
             break
 
-        gt_raw = make_pseudo_gt(levels[gt_level], args.gt_frames)
-        gt_z = log1p_np(gt_raw)
+        if fixed_gt_z is not None:
+            gt_z = fixed_gt_z
+        else:
+            gt_z = log1p_np(make_pseudo_gt(levels[gt_level], args.gt_frames))
         dr = float(gt_z.max() - gt_z.min()) or 1.0  # log1p 域、用 GT 的动态范围作 data_range
 
         files = list_supported_files(levels[args.eval_level])
@@ -195,9 +210,10 @@ def main(args) -> None:
                 s_acc[key].append((psnr(img, gt_z, data_range=dr), ssim(img, gt_z, data_range=dr)))
 
             if vis_done < args.max_vis_scenes and fi == 0:
+                gt_label = "GT(reference)" if fixed_gt_z is not None else "pseudo-GT(level%d)" % gt_level
                 save_panels(
                     [("noisy(level%d)" % args.eval_level, noisy_z), ("N2N", n2n_z),
-                     ("NTN(ours)", ntn_z), ("pseudo-GT(level%d)" % gt_level, gt_z)],
+                     ("NTN(ours)", ntn_z), (gt_label, gt_z)],
                     compare_dir / f"scene{scene}_frame0.png", args.zoom_size,
                 )
 
@@ -209,10 +225,11 @@ def main(args) -> None:
             vis_done += 1
 
     if not per_scene:
-        raise RuntimeError(f"没有同时含 level{args.eval_level} 和 level{gt_level} 的场景，检查数据/层级。")
+        raise RuntimeError(f"没有可评估的场景（eval_level={args.eval_level}, scenes={args.scenes}），检查数据/层级/筛选。")
 
+    gt_desc = "reference.npy" if fixed_gt_z is not None else f"pseudo-GT level{gt_level}"
     summary = {k: np.mean(rows[k], axis=0).tolist() for k in rows}
-    print(f"\n==== OOD eval on level{args.eval_level} (vs pseudo-GT level{gt_level}, {len(per_scene)} scenes) ====")
+    print(f"\n==== OOD eval on level{args.eval_level} (vs {gt_desc}, {len(per_scene)} scenes) ====")
     print(f"{'method':>14} | {'PSNR(dB)':>9} | {'SSIM':>7}")
     print("-" * 36)
     label = {"noisy": "noisy input", "n2n": "N2N (lv234)", "ntn": "NTN (ours)"}
@@ -244,6 +261,10 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--eval_level", type=int, default=1, help="留出的 OOD 评估层级（默认最噪 level1）。")
     p.add_argument("--gt_level", type=int, default=0, help="伪 GT 用的最高叠加层级；<=0 自动取最大。")
     p.add_argument("--gt_frames", type=int, default=0, help="伪 GT 多帧均值用多少帧；<=0 用全部。")
+    p.add_argument("--reference_npy", type=str, default="",
+                   help="用一张固定 reference.npy 当 GT（替代同场景多帧均值）；需与场景像素对齐，常配合 --scenes。")
+    p.add_argument("--scenes", type=str, nargs="*", default=None,
+                   help="只评估这些场景编号（如 --scenes 0）。配合 --reference_npy 用。")
     p.add_argument("--max_frames_per_scene", type=int, default=3, help="每个场景评估多少帧 OOD 输入。")
     p.add_argument("--max_scenes", type=int, default=0, help="最多评估多少场景；<=0 不限。")
     p.add_argument("--max_vis_scenes", type=int, default=12, help="出多少张对比图。")
