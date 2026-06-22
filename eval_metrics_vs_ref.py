@@ -67,8 +67,20 @@ def main(args) -> None:
     ref_c = center_crop_to(ref, H, W)
     imgs_c = [(lab, center_crop_to(im, H, W)) for lab, im in imgs]
 
+    # 可选 winsorize：从 reference 取 [clip_pct, 100-clip_pct] 作「同一个」裁剪区间，
+    # 对 reference 与所有待比图统一 clip，抑制 hot/dead/饱和像素对 PSNR、r 的不成比例影响。
+    clip_lo = clip_hi = None
+    if args.clip_pct > 0:
+        clip_lo, clip_hi = np.percentile(ref_c, [args.clip_pct, 100 - args.clip_pct])
+        clip_lo, clip_hi = float(clip_lo), float(clip_hi)
+        ref_c = np.clip(ref_c, clip_lo, clip_hi)
+        imgs_c = [(lab, np.clip(im, clip_lo, clip_hi)) for lab, im in imgs_c]
+        dr = (clip_hi - clip_lo) or 1.0  # data_range 与裁剪区间自洽，避免 PSNR 虚高
+
     rows = []
-    print(f"\nreference = {args.reference}  (size {H}x{W}, data_range={dr:g})")
+    clip_note = (f", winsorize[{args.clip_pct}%,{100-args.clip_pct}%]->[{clip_lo:.3g},{clip_hi:.3g}]"
+                 if clip_lo is not None else "")
+    print(f"\nreference = {args.reference}  (size {H}x{W}, data_range={dr:g}{clip_note})")
     print(f"{'image':>10} | {'PSNR(dB)':>9} | {'MSSIM':>7} | {'r':>7}")
     print("-" * 42)
     for lab, im in imgs_c:
@@ -81,8 +93,9 @@ def main(args) -> None:
     out_dir = Path(args.out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
     (out_dir / "metrics.json").write_text(
-        json.dumps({"reference": args.reference, "max": dr, "size": [H, W], "results": rows},
-                   indent=2, ensure_ascii=False), encoding="utf-8")
+        json.dumps({"reference": args.reference, "data_range": dr, "size": [H, W],
+                    "clip_pct": args.clip_pct, "clip_range": [clip_lo, clip_hi],
+                    "results": rows}, indent=2, ensure_ascii=False), encoding="utf-8")
 
     # ---- 可视化：上排灰度、下排伪彩；列 = reference + 各图。共享窗宽窗位，便于公平比较 ----
     panels = [("reference", ref_c)] + imgs_c
@@ -125,7 +138,9 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--reference", required=True, help="参考图 .npy")
     p.add_argument("--images", nargs="+", required=True,
                    help="待比较图，格式 label=path（如 t5=/path/t5-0.npy n2n=/path/n2n.npy ntn=/path/ntn.npy）")
-    p.add_argument("--max", type=float, default=255.0, help="data_range（PSNR/SSIM 用），默认 255")
+    p.add_argument("--max", type=float, default=255.0, help="data_range（PSNR/SSIM 用），默认 255；开启 --clip_pct 时自动改用裁剪区间宽度")
+    p.add_argument("--clip_pct", type=float, default=0.0,
+                   help="winsorize 百分位（如 0.5 表示裁到 [0.5%%,99.5%%]，从 reference 取、对所有图统一）。0=不裁。")
     p.add_argument("--cmap", type=str, default="turbo", help="伪彩 colormap（turbo/jet/viridis...）")
     p.add_argument("--pclip", type=float, default=1.0, help="显示窗位百分位裁剪（取 reference 的 p..100-p）")
     p.add_argument("--out_dir", type=str, default="results/metrics_vs_ref")
