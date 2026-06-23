@@ -145,11 +145,21 @@ def main(args) -> None:
     if not folders:
         raise RuntimeError(f"No sequence folders found under {args.data_path}")
 
+    # 可选：只测指定场景（按场景文件夹名筛选，如 mix 下的 305 306 ... 这种 flat 多帧结构）。
+    subdir_set = {s.lower() for s in args.data_subdirs}
+    include_scenes = set(str(s) for s in args.include_scenes) if args.include_scenes else None
+
+    def scene_name(folder: Path) -> str:
+        # mix/305/npy -> "305"；若 leaf 本身是场景目录则取其名。
+        return folder.parent.name if folder.name.lower() in subdir_set else folder.name
+
     # 按层级分组并对每组限制序列数量，避免在大数据集上跑太久。
     per_level_count: dict[str, int] = {}
     records: list[dict] = []
     print(f"[INFO] discovered {len(folders)} candidate sequence folders")
     for folder in folders:
+        if include_scenes is not None and scene_name(folder) not in include_scenes:
+            continue
         level = infer_level(folder)
         if args.max_seqs_per_level > 0 and per_level_count.get(level, 0) >= args.max_seqs_per_level:
             continue
@@ -217,6 +227,8 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--strict_data_subdir", type=int, default=0)
     p.add_argument("--data_index_min", type=int, default=-1)
     p.add_argument("--data_index_max", type=int, default=-1)
+    p.add_argument("--include_scenes", nargs="*", default=None,
+                   help="只测这些场景文件夹名（如 mix 下 --include_scenes 305 306 ... 325）。")
     p.add_argument("--intensity_transform", choices=["none", "log1p"], default="log1p",
                    help="默认 log1p，与训练保持一致；用 none 看 raw 域噪声。")
     p.add_argument("--crop", type=int, default=512, help="中心裁剪边长，加速并避开边缘；<=0 用整图。")
