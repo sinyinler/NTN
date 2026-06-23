@@ -156,7 +156,11 @@ def main(args) -> None:
     # 按层级分组并对每组限制序列数量，避免在大数据集上跑太久。
     per_level_count: dict[str, int] = {}
     records: list[dict] = []
-    print(f"[INFO] discovered {len(folders)} candidate sequence folders")
+    if include_scenes is not None:
+        matched = sum(1 for f in folders if scene_name(f) in include_scenes)
+        print(f"[INFO] discovered {len(folders)} total; {matched} match --include_scenes {sorted(include_scenes)}")
+    else:
+        print(f"[INFO] discovered {len(folders)} candidate sequence folders")
     for folder in folders:
         if include_scenes is not None and scene_name(folder) not in include_scenes:
             continue
