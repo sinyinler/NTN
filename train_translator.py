@@ -11,7 +11,7 @@ from torch.optim.lr_scheduler import OneCycleLR
 from torch.utils.data import DataLoader, random_split
 from tqdm import tqdm
 
-from data.ntn_dataset import N2NBootstrapTripletDataset
+from data.ntn_dataset import N2NBootstrapTripletDataset, mix_sources_from_args
 from losses.charbonnier import CharbonnierLoss
 from losses.ntn_losses import ExplicitNoiseTranslationLoss
 from models.denoiser import Denoiser
@@ -46,6 +46,7 @@ def build_dataset(args) -> N2NBootstrapTripletDataset:
         data_index_min=args.data_index_min if args.data_index_min >= 0 else None,
         data_index_max=args.data_index_max if args.data_index_max >= 0 else None,
         include_levels=tuple(args.levels) if args.levels else None,
+        extra_sources=mix_sources_from_args(args),
         intensity_transform=args.intensity_transform,
         boxcox_lam=args.boxcox_lam,
         boxcox_eps=args.boxcox_eps,
@@ -239,6 +240,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--data_index_max", type=int, default=-1)
     parser.add_argument("--levels", type=int, nargs="*", default=None,
                         help="只用这些叠加层级 5x5xN 的 N（如 --levels 2 3 4 把 level1 留作 OOD 测试）。")
+    parser.add_argument("--mix_root", type=str, default="",
+                        help="额外数据根目录（如 /mnt2/songyd/mix），配合 --mix_scenes 加入多被试训练。")
+    parser.add_argument("--mix_scenes", type=str, nargs="*", default=None,
+                        help="只取 mix_root 下这些场景编号（脑 305..312 + 腿 316..321；手 325 留作 OOD）。")
+    parser.add_argument("--mix_subdirs", type=str, nargs="*", default=None,
+                        help="mix 数据子目录（默认同 --data_subdirs）。")
     parser.add_argument("--intervals", type=int, nargs="*", default=[5, 7, 9])
     # T 阶段 crop 越大，explicit loss 估噪声分布越准。论文用 256/batch4；本项目两张 A5000(24G)
     # 实测 512/batch12 可跑，故默认拉到 512/12（显存吃紧再降 batch；梯度要穿过冻结 D'，显存偏重）。

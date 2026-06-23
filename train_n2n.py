@@ -29,6 +29,7 @@ except ModuleNotFoundError:
             pass
 
 from data.legacy_pairs import SpeckleN2NLogDataset
+from data.ntn_dataset import N2NBootstrapTripletDataset, mix_sources_from_args
 from losses.charbonnier import CharbonnierLoss
 from losses.rtv import RTVRegularizer
 from models.denoiser import Denoiser
@@ -110,7 +111,62 @@ class ShapeBatchSampler:
         return iter(batches)
 
 
+class _PairView(torch.utils.data.Dataset):
+    """把 N2NBootstrapTripletDataset 的三元组样本，降维成 N2N 需要的 (input, target) 噪声对。"""
+
+    def __init__(self, base):
+        self.base = base
+
+    def __len__(self):
+        return len(self.base)
+
+    def get_sample_shape(self, idx):
+        return (self.base.crop_size, self.base.crop_size)
+
+    def __getitem__(self, idx):
+        d = self.base[idx]
+        return d["input"], d["target"]
+
+
+def build_multisource_loaders(args):
+    """多被试（5x5 + mix 脑/腿）统一加载：与 D'/T 完全相同的数据源，保证公平对照。"""
+    crop = args.crop_size if args.crop_size > 0 else 512
+    base = N2NBootstrapTripletDataset(
+        root_dir=args.data_path,
+        intervals=args.intervals,
+        crop_size=crop,
+        random_crop=True,
+        data_subdirs=("npy", "lbf"),
+        strict_data_subdir=bool(args.strict_data_subdir),
+        include_levels=tuple(args.levels) if args.levels else None,
+        extra_sources=mix_sources_from_args(args),
+        intensity_transform=args.intensity_transform,
+        compute_pseudo_clean=False,  # N2N 只需噪声对，不需要伪干净
+        augment=True,
+    )
+    view = _PairView(base)
+    total = len(view)
+    train_size = min(max(int(args.train_fraction * total), 1), total)
+    val_size = total - train_size
+    if val_size > 0:
+        train_ds, val_ds = random_split(view, [train_size, val_size],
+                                        generator=torch.Generator().manual_seed(args.seed))
+    else:
+        train_ds, val_ds = view, None
+    train_loader = DataLoader(train_ds, batch_size=args.batch_size, shuffle=True,
+                              num_workers=args.num_workers, pin_memory=True,
+                              prefetch_factor=2 if args.num_workers > 0 else None)
+    val_loader = None if val_ds is None else DataLoader(
+        val_ds, batch_size=args.batch_size, shuffle=False,
+        num_workers=args.val_num_workers, pin_memory=True)
+    print(f"[INFO] multi-source N2N: {total} samples (crop={crop}, 5x5 levels={args.levels}, "
+          f"mix_root={args.mix_root}, mix_scenes={args.mix_scenes})")
+    return base, train_loader, val_loader
+
+
 def build_loaders(args):
+    if args.mix_root:
+        return build_multisource_loaders(args)
     lambda_conditioned = bool(args.lambda_conditioned) and args.intensity_transform == "boxcox"
     full_dataset = SpeckleN2NLogDataset(
         root_dir=args.data_path,
@@ -297,6 +353,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--data_index_max", type=int, default=-1)
     parser.add_argument("--levels", type=int, nargs="*", default=None,
                         help="只用这些叠加层级 5x5xN 的 N 训练（如 --levels 2 3 4 把 level1 留作 OOD 对照）。")
+    parser.add_argument("--mix_root", type=str, default="",
+                        help="额外数据根目录（如 /mnt2/songyd/mix）；给定则启用多被试统一加载，与 D'/T 同源。")
+    parser.add_argument("--mix_scenes", type=str, nargs="*", default=None,
+                        help="只取 mix_root 下这些场景编号（脑 305..312 + 腿 316..321；手 325 留作 OOD）。")
+    parser.add_argument("--mix_subdirs", type=str, nargs="*", default=None,
+                        help="mix 数据子目录（默认 npy+lbf 自动兼容）。")
     parser.add_argument("--intervals", type=int, nargs="*", default=[5, 7, 9])
     parser.add_argument("--save_dir", type=str, default="results/checkpoints/n2n")
     parser.add_argument("--log_dir", type=str, default="results/logs/n2n")

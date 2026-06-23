@@ -12,7 +12,7 @@ from torch.optim.lr_scheduler import OneCycleLR
 from torch.utils.data import DataLoader, random_split
 from tqdm import tqdm
 
-from data.ntn_dataset import N2NBootstrapTripletDataset
+from data.ntn_dataset import N2NBootstrapTripletDataset, mix_sources_from_args
 from losses.charbonnier import CharbonnierLoss
 from models.denoiser import Denoiser
 from utils.checkpoint import load_weights_flexible, save_training_checkpoint
@@ -45,6 +45,7 @@ def build_dataset(args) -> N2NBootstrapTripletDataset:
         data_index_min=args.data_index_min if args.data_index_min >= 0 else None,
         data_index_max=args.data_index_max if args.data_index_max >= 0 else None,
         include_levels=tuple(args.levels) if args.levels else None,
+        extra_sources=mix_sources_from_args(args),
         intensity_transform=args.intensity_transform,
         boxcox_lam=args.boxcox_lam,
         boxcox_eps=args.boxcox_eps,
@@ -195,6 +196,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--data_index_max", type=int, default=-1)
     parser.add_argument("--levels", type=int, nargs="*", default=None,
                         help="只用这些叠加层级 5x5xN 的 N（如 --levels 2 3 4 把 level1 留作 OOD 测试）。")
+    parser.add_argument("--mix_root", type=str, default="",
+                        help="额外数据根目录（如 /mnt2/songyd/mix），配合 --mix_scenes 加入多被试训练。")
+    parser.add_argument("--mix_scenes", type=str, nargs="*", default=None,
+                        help="只取 mix_root 下这些场景编号（如脑 305..312 + 腿 316..321；手 325 留作 OOD 不要列入）。")
+    parser.add_argument("--mix_subdirs", type=str, nargs="*", default=None,
+                        help="mix 数据子目录（默认同 --data_subdirs，会自动兼容直接 lbf 与 npy 子目录两种结构）。")
     parser.add_argument("--intervals", type=int, nargs="*", default=[5, 7, 9])
     # D' 与 N2N 同网络、同数据、同任务，crop/batch 对齐 N2N（512/48）：上下文一致、BN 统计稳、用满 GPU。
     parser.add_argument("--crop_size", type=int, default=512)
@@ -209,9 +216,9 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--lambda_min", type=float, default=-0.3)
     parser.add_argument("--lambda_max", type=float, default=0.2)
     parser.add_argument("--lambda_candidates", type=float, nargs="*", default=None)
-    # 盲高斯区间：覆盖真实噪声跨度（log1p 域实测 level4≈0.10 ~ level1≈0.43，含余量到 0.6），
-    # 且下界远离 0，堵死翻译器 T 学恒等映射的捷径。见 experiment_log.md 噪声测量记录。
-    parser.add_argument("--sigma_min", type=float, default=0.08)
+    # 盲高斯区间：覆盖全部训练被试的真实噪声跨度（log1p 域实测：腿≈0.03、脑≈0.07、
+    # 5x5 level4≈0.10 ~ level1≈0.43、手≈0.37）。下界 0.02 盖住腿并留余量、上界 0.6 盖住 5x5 最噪。
+    parser.add_argument("--sigma_min", type=float, default=0.02)
     parser.add_argument("--sigma_max", type=float, default=0.6)
     parser.add_argument("--epochs", type=int, default=5)
     parser.add_argument("--batch_size", type=int, default=48)

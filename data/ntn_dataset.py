@@ -19,6 +19,29 @@ from data.discovery import (
 from utils.intensity import IntensityTransform, lambda_condition_value
 
 
+def mix_sources_from_args(args) -> list[dict]:
+    """从训练参数构造 extra_sources：把 mix 下指定场景（脑/腿）作为额外数据源。
+
+    用法：--mix_root /mnt2/songyd/mix --mix_scenes 305 306 ... 321
+    （只取这些编号，不会把 mix 里其它几百个场景或留作 OOD 的手 325 带进来）。
+    """
+    mix_root = getattr(args, "mix_root", "") or ""
+    if not mix_root:
+        return []
+    subdirs = getattr(args, "mix_subdirs", None)
+    if not subdirs:
+        subdirs = getattr(args, "data_subdirs", None)
+    if not subdirs:
+        one = getattr(args, "data_subdir", None)  # train_n2n 用单数 --data_subdir
+        subdirs = [one] if one else ["npy", "lbf"]
+    return [{
+        "root": mix_root,
+        "data_subdirs": tuple(subdirs),
+        "scenes": getattr(args, "mix_scenes", None),
+        "strict_data_subdir": False,
+    }]
+
+
 def center_crop(img: np.ndarray, crop_size: int | None) -> np.ndarray:
     if crop_size is None or crop_size <= 0:
         return img
@@ -79,6 +102,7 @@ class N2NBootstrapTripletDataset(Dataset):
         data_index_min: int | None = None,
         data_index_max: int | None = None,
         include_levels: tuple[int, ...] | None = None,
+        extra_sources: list[dict] | None = None,
         intensity_transform: str = "log1p",
         boxcox_lam: float = -0.15,
         boxcox_eps: float = 1e-6,
@@ -112,6 +136,8 @@ class N2NBootstrapTripletDataset(Dataset):
             vst_lut=vst_lut,
         )
 
+        # 主数据源（如 5x5，可带 include_levels）；extra_sources 追加更多根目录
+        # （如 mix 下指定的脑/腿场景），实现「多被试混合训练」。
         folders = discover_sequence_dirs(
             root=root_dir,
             data_subdirs=tuple(data_subdirs),
@@ -120,6 +146,14 @@ class N2NBootstrapTripletDataset(Dataset):
             data_index_max=data_index_max,
             include_levels=tuple(int(x) for x in include_levels) if include_levels else None,
         )
+        for src in (extra_sources or []):
+            folders = folders + discover_sequence_dirs(
+                root=src["root"],
+                data_subdirs=tuple(src.get("data_subdirs", data_subdirs)),
+                strict_data_subdir=bool(src.get("strict_data_subdir", strict_data_subdir)),
+                include_levels=tuple(int(x) for x in src["levels"]) if src.get("levels") else None,
+                include_scenes=tuple(str(x) for x in src["scenes"]) if src.get("scenes") else None,
+            )
         self.records: list[SequenceRecord] = []
         self.items: list[tuple[int, int]] = []
         for folder in folders:

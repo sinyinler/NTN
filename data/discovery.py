@@ -74,6 +74,11 @@ def index_allowed(name: str, index_min: int | None, index_max: int | None) -> bo
     return True
 
 
+def scene_name_of(folder: Path, data_subdirs: tuple[str, ...] = DEFAULT_DATA_SUBDIRS) -> str:
+    """从序列目录推断「场景编号」：mix/325/npy -> '325'；mix/316 -> '316'。"""
+    return folder.parent.name if folder.name.lower() in {s.lower() for s in data_subdirs} else folder.name
+
+
 def discover_sequence_dirs(
     root: str | Path,
     data_subdirs: tuple[str, ...] = DEFAULT_DATA_SUBDIRS,
@@ -81,6 +86,7 @@ def discover_sequence_dirs(
     data_index_min: int | None = None,
     data_index_max: int | None = None,
     include_levels: tuple[int, ...] | None = None,
+    include_scenes: tuple[str, ...] | None = None,
 ) -> list[Path]:
     """发现可形成 N2N pair 的具体帧序列目录。
 
@@ -88,10 +94,16 @@ def discover_sequence_dirs(
     1. root 本身就是一个帧序列目录；
     2. 原项目的 mix/5x5x100/0/npy 这类层级结构。
 
-    include_levels 不为空时，只保留叠加层级 5x5x{N} 的 N 落在该集合里的序列，
-    用于「按层级划分 train/test」（例如训练用 level 2/3/4、把 level1 留作 OOD 测试）。
-    此时无法解析层级的目录（flat / 非 5x5xN）一律跳过，避免把未知层级混进来。
+    include_levels 不为空时，只保留叠加层级 5x5x{N} 的 N 落在该集合里的序列。
+    include_scenes 不为空时，只保留场景编号在该集合里的序列（如 mix 下 305..312、316..321）。
     """
+
+    scenes_set = {str(s) for s in include_scenes} if include_scenes else None
+
+    def _filter(dirs: list[Path]) -> list[Path]:
+        if scenes_set is None:
+            return dirs
+        return [d for d in dirs if scene_name_of(d, data_subdirs) in scenes_set]
 
     root = Path(root)
     if list_supported_files(root):
@@ -99,7 +111,7 @@ def discover_sequence_dirs(
             raise ValueError(
                 f"--levels was given but {root} is a single flat sequence with no 5x5xN level info."
             )
-        return [root]
+        return _filter([root])
 
     levels_set = set(include_levels) if include_levels is not None else None
     sequence_dirs: list[Path] = []
@@ -139,9 +151,9 @@ def discover_sequence_dirs(
     if sequence_dirs or levels_set is not None:
         # 指定了层级却没找到任何序列时，直接返回空，交给上层报错；
         # 不走 rglob 兜底，以免把被过滤掉的层级又递归捞回来。
-        return sequence_dirs
+        return _filter(sequence_dirs)
 
     for child in sorted((p for p in root.rglob("*") if p.is_dir()), key=natural_key):
         if list_supported_files(child):
             sequence_dirs.append(child)
-    return sequence_dirs
+    return _filter(sequence_dirs)
