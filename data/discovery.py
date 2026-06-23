@@ -106,9 +106,20 @@ def discover_sequence_dirs(
     for level_dir in sorted((p for p in root.iterdir() if p.is_dir()), key=natural_key):
         level = parse_level_name(level_dir.name)
         if level is None:
+            # flat 结构：level_dir 本身就是一个场景目录（如 mix/325 或 mix/316）。
+            # 每个编号=一个同场景，帧要么在唯一的数据子目录里（mix/325/npy/*.npy），
+            # 要么直接在该目录下（mix/316/*.lbf）。优先用子目录、否则用直接文件，二者其一。
             if levels_set is not None:
                 continue
-            if not strict_data_subdir and list_supported_files(level_dir):
+            if not index_allowed(level_dir.name, data_index_min, data_index_max):
+                continue
+            sub_found = False
+            for subdir_name in data_subdirs:
+                candidate = level_dir / subdir_name
+                if list_supported_files(candidate):
+                    sequence_dirs.append(candidate)
+                    sub_found = True
+            if not sub_found and list_supported_files(level_dir):
                 sequence_dirs.append(level_dir)
             continue
 
