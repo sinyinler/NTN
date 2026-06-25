@@ -18,3 +18,5 @@ ppt_assets/page*.png
 
 # PowerPoint/Office 临时锁文件
 ~$*
+
+ppt_assets/render_full/
