@@ -67,6 +67,12 @@ def main(args) -> None:
     ref_c = center_crop_to(ref, H, W)
     imgs_c = [(lab, center_crop_to(im, H, W)) for lab, im in imgs]
 
+    # 可选：在 log1p 域算指标（模型工作域），抑制 raw 域亮血管(指数还原)对 PSNR 的放大，更公平。
+    if args.log_domain:
+        ref_c = np.log1p(np.clip(ref_c, 0, None))
+        imgs_c = [(lab, np.log1p(np.clip(im, 0, None))) for lab, im in imgs_c]
+        dr = float(ref_c.max() - ref_c.min()) or 1.0  # log1p 域用 reference 自身范围作 data_range
+
     # 可选 winsorize：从 reference 取 [clip_pct, 100-clip_pct] 作「同一个」裁剪区间，
     # 对 reference 与所有待比图统一 clip，抑制 hot/dead/饱和像素对 PSNR、r 的不成比例影响。
     clip_lo = clip_hi = None
@@ -141,6 +147,8 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--max", type=float, default=255.0, help="data_range（PSNR/SSIM 用），默认 255；开启 --clip_pct 时自动改用裁剪区间宽度")
     p.add_argument("--clip_pct", type=float, default=0.0,
                    help="winsorize 百分位（如 0.5 表示裁到 [0.5%%,99.5%%]，从 reference 取、对所有图统一）。0=不裁。")
+    p.add_argument("--log_domain", type=int, default=0,
+                   help="1=在 log1p 域算指标（消除 raw 亮血管对 PSNR 的指数放大，更公平）；data_range 自动用 log 域范围。")
     p.add_argument("--cmap", type=str, default="turbo", help="伪彩 colormap（turbo/jet/viridis...）")
     p.add_argument("--pclip", type=float, default=1.0, help="显示窗位百分位裁剪（取 reference 的 p..100-p）")
     p.add_argument("--out_dir", type=str, default="results/metrics_vs_ref")
