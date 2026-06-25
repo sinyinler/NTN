@@ -241,18 +241,26 @@ bullets(s,8.2,2.5,4.6,4.0,[
     [("→ N2N 越强，NTN 越没发挥空间。",13.5,INK,False)],
 ],sz=13.5,gap=9)
 
-# ============ 14 诚实结论 ============
-s=slide(); motif_title(s,"诚实结论：为什么 NTN 没能超过 N2N",14)
-bullets(s,0.7,1.6,12.0,3.3,[
-    [("结构性原因，不是调参：",15,NAVY,True)],
-    [("① 无真值 GT → NTN 用 N2N 当伪 GT(Ĉ=N2N) → 本质“蒸馏 N2N”，天花板就是 N2N；",14.5,INK,False)],
-    [("② 你的 N2N(Noise2Noise) 本身是鲁棒强基线，不像论文打败的“过拟合监督去噪器”；",14.5,INK,False)],
-    [("③ 试图用小数据削弱 N2N，同时也削弱了 NTN，固定 σ 还帮倒忙（详见附录探索）。",14.5,INK,False)],
-],sz=14.5,gap=9)
-box(s,0.7,4.85,12.0,1.7,fill=SOFT,line=LINE,round_=True)
-text(s,1.0,5.05,11.4,1.4,[[("可写入汇报的真实结论： ",14.5,MINT,True),("①复现了翻译机制(噪声白化,硬证据)；",14.5,INK,False)],
-    [("②NTN 泛化与 N2N 相当、不崩不脑补，且 T 与去噪器解耦可即插即用；",14.5,INK,False)],
-    [("③真正的泛化提升来自内容多样化；④诚实指出无 GT 时 NTN ≈ N2N 及其原因。",14.5,INK,False)]],space=1.12)
+# ============ 14 关键结论：数据量 × NTN 优势（仿射校准后）============
+s=slide(); motif_title(s,"关键结论：NTN 的优势取决于数据量（limited supervision）",14)
+text(s,0.7,1.45,12.0,0.5,[[("同口径对比：同 36 个 OOD 场景、均做仿射校准(去全局尺度/亮度偏移)后，比较两种训练数据规模：",13.5,INK,False)]])
+tb=[["训练数据","N2N (PSNR/SSIM/r)","NTN (PSNR/SSIM/r)","NTN − N2N"],
+    ["小数据 (level3 × 5场景)","32.59 / .784 / .864","33.45 / .790 / .887","+0.85dB / +0.023 r"],
+    ["多被试 (全量)","34.73 / .820 / .917","34.71 / .821 / .912","−0.02dB（打平）"]]
+yy=2.15
+for i,row in enumerate(tb):
+    bg=SOFT if i==0 else WHITE; box(s,0.7,yy,12.0,0.62,fill=bg,line=LINE)
+    for cx,wd,txt in zip([0.95,3.85,7.1,10.15],[2.9,3.2,3.0,2.7],row):
+        hot=(i==1 and cx==10.15); col=RED if hot else (NAVY if i==0 else INK)
+        text(s,cx,yy+0.13,wd,0.5,[[(txt,12.5,col,(i==0 or hot))]])
+    yy+=0.62
+bullets(s,0.7,4.35,12.0,1.4,[
+    [("数据有限 → NTN 明显胜 N2N（+0.85dB、r +0.023）；数据充足 → N2N 追平，NTN 优势消失。",14,INK,False)],
+    [("→ 正是论文 “robust generalization under limited supervision” 的核心论断，在 BFI 上验证成立。",14,NAVY,True)],
+],sz=14,gap=9)
+box(s,0.7,5.7,12.0,1.0,fill=SOFT,line=LINE,round_=True)
+text(s,1.0,5.85,11.4,0.8,[[("前提：对输出做一次仿射校准 ",13.5,MINT,True),
+    ("——NTN 的全局尺度/亮度偏移来自 T+D′ 不保绝对电平；r、SSIM 不受其影响，结构本就正确。",13.5,INK,False)]])
 
 # ============ 15 探索① BSN ============
 s=slide(); motif_title(s,"探索①：T 白化后，单帧自监督 BSN 是否可行",15)
