@@ -14,6 +14,9 @@ from pathlib import Path
 import numpy as np
 import torch
 import torch.nn.functional as F
+import matplotlib
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt
 
 ROOT = Path(__file__).resolve().parents[0]
 if str(ROOT) not in sys.path:
@@ -74,6 +77,30 @@ def denoise(z, device, n2n, translator, expert):
     return n2n_z, ntn_z
 
 
+def save_vis(scene, noisy_z, n2n_z, ntn_z, ref_z, m, out_dir, cmap):
+    """每个场景出一张 2 行(灰度/jet) × 4 列(noisy/n2n/ntn/ref) 对比图，共用参考窗位。"""
+    h = min(x.shape[0] for x in (noisy_z, n2n_z, ntn_z, ref_z))
+    w = min(x.shape[1] for x in (noisy_z, n2n_z, ntn_z, ref_z))
+    panels = [("noisy\nP%.1f S%.2f r%.2f" % tuple(m["noisy"]), noisy_z[:h, :w]),
+              ("n2n\nP%.1f S%.2f r%.2f" % tuple(m["n2n"]), n2n_z[:h, :w]),
+              ("ntn\nP%.1f S%.2f r%.2f" % tuple(m["ntn"]), ntn_z[:h, :w]),
+              ("reference", ref_z[:h, :w])]
+    vmin, vmax = np.percentile(ref_z[:h, :w], [1, 99])
+    if vmax <= vmin:
+        vmin, vmax = float(ref_z.min()), float(ref_z.max() or 1.0)
+    fig, ax = plt.subplots(2, 4, figsize=(16, 8), dpi=110)
+    for j, (name, img) in enumerate(panels):
+        ax[0, j].imshow(img, cmap="gray", vmin=vmin, vmax=vmax); ax[0, j].set_title(name, fontsize=10)
+        ax[1, j].imshow(img, cmap=cmap, vmin=vmin, vmax=vmax)
+        for r in (0, 1):
+            ax[r, j].set_xticks([]); ax[r, j].set_yticks([])
+    ax[0, 0].set_ylabel("grayscale"); ax[1, 0].set_ylabel(cmap)
+    fig.suptitle(f"scene {scene} (log1p domain)", fontsize=12)
+    fig.tight_layout()
+    p = Path(out_dir) / "vis"; p.mkdir(parents=True, exist_ok=True)
+    fig.savefig(p / f"{scene}.png", bbox_inches="tight"); plt.close(fig)
+
+
 def scene_list(args):
     if args.scenes:
         return [str(s) for s in args.scenes]
@@ -117,6 +144,8 @@ def main(args):
         per_scene.append({"scene": sc, **m})
         print(f"  {sc}: n2n {m['n2n'][0]:.2f}/{m['n2n'][1]:.3f}/{m['n2n'][2]:.3f}  "
               f"ntn {m['ntn'][0]:.2f}/{m['ntn'][1]:.3f}/{m['ntn'][2]:.3f}")
+        if args.vis and (args.max_vis <= 0 or len(per_scene) <= args.max_vis):
+            save_vis(sc, noisy_z, n2n_z, ntn_z, ref_z, m, args.out_dir, args.cmap)
 
     if not per_scene:
         raise SystemExit("没有可评估的场景")
@@ -158,6 +187,9 @@ def parse_args():
     p.add_argument("--inject_sigma", type=float, default=1.0)
     p.add_argument("--residual_scale", type=float, default=1.0)
     p.add_argument("--out_dir", default="results/eval_ood_scenes")
+    p.add_argument("--vis", type=int, default=1, help="是否每个场景出对比图(1/0)，边跑边存到 out_dir/vis/")
+    p.add_argument("--max_vis", type=int, default=0, help="最多出多少张图；<=0 表示全部场景都出")
+    p.add_argument("--cmap", default="jet")
     p.add_argument("--device", default="")
     return p.parse_args()
 
