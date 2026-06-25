@@ -98,7 +98,7 @@ def main(args) -> None:
                     "results": rows}, indent=2, ensure_ascii=False), encoding="utf-8")
 
     # ---- 可视化：上排灰度、下排伪彩；列 = reference + 各图。共享窗宽窗位，便于公平比较 ----
-    panels = [("reference", ref_c)] + imgs_c
+    panels = imgs_c + [("reference", ref_c)]  # 顺序：noisy, n2n, ntn, ..., reference（参考放最后）
     vmin = float(np.percentile(ref_c, args.pclip)); vmax = float(np.percentile(ref_c, 100 - args.pclip))
     if vmax <= vmin:
         vmin, vmax = float(ref_c.min()), float(ref_c.max() or 1.0)
