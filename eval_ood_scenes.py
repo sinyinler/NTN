@@ -85,11 +85,12 @@ def save_vis(scene, noisy_z, n2n_z, ntn_z, ref_z, m, out_dir, cmap):
               ("n2n\nP%.1f S%.2f r%.2f" % tuple(m["n2n"]), n2n_z[:h, :w]),
               ("ntn\nP%.1f S%.2f r%.2f" % tuple(m["ntn"]), ntn_z[:h, :w]),
               ("reference", ref_z[:h, :w])]
-    vmin, vmax = np.percentile(ref_z[:h, :w], [1, 99])
-    if vmax <= vmin:
-        vmin, vmax = float(ref_z.min()), float(ref_z.max() or 1.0)
     fig, ax = plt.subplots(2, 4, figsize=(16, 8), dpi=110)
     for j, (name, img) in enumerate(panels):
+        # 每个面板用各自的百分位窗位：避免 NTN 因全局尺度偏移而显示成一团黑
+        vmin, vmax = np.percentile(img, [1, 99])
+        if vmax <= vmin:
+            vmin, vmax = float(img.min()), float(img.max() or 1.0)
         ax[0, j].imshow(img, cmap="gray", vmin=vmin, vmax=vmax); ax[0, j].set_title(name, fontsize=10)
         ax[1, j].imshow(img, cmap=cmap, vmin=vmin, vmax=vmax)
         for r in (0, 1):
