@@ -196,6 +196,8 @@ def parse_args():
     p.add_argument("--vis", type=int, default=1, help="是否每个场景出对比图(1/0)，边跑边存到 out_dir/vis/")
     p.add_argument("--max_vis", type=int, default=0, help="最多出多少张图；<=0 表示全部场景都出")
     p.add_argument("--cmap", default="jet")
+    p.add_argument("--affine", type=int, default=0,
+                   help="1=对每张图做最小二乘仿射对齐(去全局增益/偏移)再算指标，分离“结构”与“尺度”。")
     p.add_argument("--device", default="")
     return p.parse_args()
 
