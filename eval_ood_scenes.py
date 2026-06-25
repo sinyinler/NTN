@@ -139,7 +139,13 @@ def main(args):
 
         m = {}
         for k, img in (("noisy", noisy_z), ("n2n", n2n_z), ("ntn", ntn_z)):
-            p, s, r = psnr(img, ref_z, dr), ssim(img, ref_z, dr), pearson(*center_crop_to_match(img, ref_z))
+            a_, b_ = center_crop_to_match(img, ref_z)
+            if args.affine:
+                # 最小二乘拟合 b_ ≈ k1*a_ + k0，去掉全局增益/偏移（N2N、NTN 同样处理）
+                x = a_.ravel().astype(np.float64); y = b_.ravel().astype(np.float64)
+                k1 = ((x - x.mean()) * (y - y.mean())).sum() / (((x - x.mean()) ** 2).sum() or 1.0)
+                a_ = (k1 * a_ + (y.mean() - k1 * x.mean())).astype(np.float32)
+            p, s, r = psnr(a_, b_, dr), ssim(a_, b_, dr), pearson(a_, b_)
             rows[k].append([p, s, r]); m[k] = [p, s, r]
         per_scene.append({"scene": sc, **m})
         print(f"  {sc}: n2n {m['n2n'][0]:.2f}/{m['n2n'][1]:.3f}/{m['n2n'][2]:.3f}  "
