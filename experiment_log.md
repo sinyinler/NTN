@@ -176,3 +176,63 @@
 - 待补：第 9 页（远 OOD 定性）留了占位框，需把服务器 `results/images/ood_compare/comparison/*.png`
   插入；其余页已完整。
 
+## 2026-06-20 多被试重训结果：手部假血管被消除 + 噪声 OOD 上 N2N 追平
+
+- 动机回顾：增加数据的**真实原因是内容 OOD**——单被试模型在没见过的**人手**上脑补出不存在的细血管
+  （非噪声问题）。NTN 治不了内容 OOD，故把脑/腿/手等多被试加入训练（N2N 同数据重训保公平）。
+- checkpoint：`n2n_multi / gaussian_expert_multi / translator_multi`。
+- 结果（36 个未见 3×3 OOD 场景，log1p 域，每场景多帧均值为参考）：
+  - 旧（单被试）：N2N 24.77 / NTN 23.88 → **NTN −0.89dB**（换内容/远噪声 OOD 上单被试 NTN 反而掉）。
+  - 新（多被试）：N2N 26.81 / NTN 26.91 → **NTN +0.10dB**（基本持平，内容脑补消除）。
+- 人脚作为「加数据后」的一次内容 OOD 测试（`metrics_foot5`，参考 1x1x100）：
+  N2N 24.67 / 0.260 / r0.843；NTN 24.66 / 0.260 / r0.839 → **N2N≈NTN，结构忠实、无脑补**。
+  （对照：单被试模型测人脚 `metrics_foot5_old` NTN r=−0.15，结构失真，印证内容 OOD 需数据多样性。）
+- 结论：数据充足时 N2N 本身已很强，NTN 优势趋于 0；**内容 OOD 靠数据多样性、不靠 NTN**。
+
+## 2026-06-25 从原始散斑计算人脚 BFI 作 OOD 参考
+
+- 用 `scripts/foot_bfi_test.py`，口径与 `lightweight_G/utils/speckle_invK2_5x5x5.py` 一致
+  （先 win×win 空间盒均值，再 twin 帧时间均值，BFI=⟨I⟩²/(var+eps)）。
+- 产出 `results/foot_bfi/5x5x{1..5}` + 参考 `ref_1x1x100`（纯时间最锐）与 `ref_5x5x100`（同 5×5 口径）。
+- 用途：给「多被试模型 vs 人脚 OOD」提供苹果对苹果的参考。
+
+## 2026-06-26 小数据 + 盲 σ 实验：limited supervision 下 NTN 胜 N2N
+
+- 问题：想验证论文「limited supervision 才显 NTN 优势」的论断 → 故意用**小数据**（level3 × 5 场景）
+  重训 N2N / D′ / T（`*_small` / `*_small_blind` / `*_small_s07`），盲 σ 区间 [0.02,0.7]。
+- 现象：直接看 raw/log 域 PSNR，小数据 NTN 在部分场景「崩」（如 192：N2N 22.98 / NTN 11.30）。
+- 诊断（关键）：**不是泛化失败，是全局尺度/亮度偏移**——同场景 NTN 的 r、SSIM ≥ N2N，只有 PSNR 崩。
+  偏移来自 **T+D′ 不保绝对电平**：小数据 D′ 见过的亮度分布窄，碰到亮度不同的 OOD 内容就整体偏移。
+- 对策：`eval_ood_scenes.py` 加 `--affine`——每张图最小二乘拟合全局增益/偏移 `ref≈k1·img+k0`，
+  对 N2N/NTN 一视同仁地去掉尺度偏移再算指标（r 本就尺度不变）。出图改为每面板自百分位窗位
+  （修 NTN 因尺度偏移显示成一团黑）。
+
+## 2026-06-26 数据规模对照（仿射校准后，36 OOD 场景）
+
+- **小数据**（level3×5场景，`eval_ood_scenes_small_blind_affine`）：
+  N2N 32.59 / .784 / .864；NTN 33.45 / .790 / .887 → **NTN +0.85dB / +0.023 r（NTN 胜）**。
+- **多被试**（全量，`eval_ood_scenes_multi_affine`）：
+  N2N 34.73 / .820 / .916；NTN 34.71 / .821 / .912 → **−0.02dB（持平）**。
+- 结论（与论文一致）：**数据越少，NTN 相对 N2N 优势越大；数据充足时 N2N 追平、优势归零。**
+- 注：第一次修复成功（2026-06-18 level1 OOD）**不需要仿射校准**，因为那是「同场景、同亮度分布」的噪声
+  OOD（只是更噪的 level1），D′ 输出电平本就对齐；小数据 + 跨被试才出现尺度偏移、需校准。
+
+## 2026-06-26 后续探索：单图 BSN（ZS-N2N）在白化图上可行
+
+- `bsn_test.py`：用 ZS-N2N（pair-downsampler 自监督）在 T 翻译后的图上去噪。
+- 原理：BSN 靠「邻像素噪声独立」；原始散斑空间相关(lag-1 0.82) → BSN 去不动；T 白化到 0.13、谱推平
+  → 单图自监督 BSN 生效。
+- 结果：**5×5×4 成功**（`results/images/bsn_3x3x1/5x5x4_0_npy_0_bsn.png`，BSN(translated) 明显比
+  BSN(raw) 干净）；**3×3×1 肉眼偏失败**（NTN=D′(T) 面板过饱和，疑尺度问题），且 bsn_test 只打印
+  指标、未落盘 → 该图无保存的定量数据。
+- 待办：若要 BSN 的 PSNR/MSSIM/r 表，需带 `--reference` 重跑并把 stdout 指标落盘。
+
+## 2026-06-26 重排组会汇报 PPT
+
+- 新建 `ppt_assets/build_deck_meeting.py` → `NTN_组会汇报.pptx`（11 页，浅色封面+正文统一）：
+  为什么用 → 论文怎么用 → 全流程图（训练/推理双泳道） → 实现细节（σ估计+T双损失）→
+  第一版失败（诊断四 bug）→ 修复初成（level1 OOD，NTN +0.63dB 略优）→ 增加数据（手假血管动机、
+  脚 OOD 测试）→ 再调数据量（小数据 NTN +0.85dB）→ 结论 → 后续 BSN。
+- 每个结果页把 PSNR/MSSIM/r 表与成果图放同一页，数值全部取自对应 `results/*/metrics.json`。
+- 视觉 QA：PowerPoint 导出 11 张 PNG 逐张检查，无溢出/重叠。
+
