@@ -222,10 +222,12 @@
 - `bsn_test.py`：用 ZS-N2N（pair-downsampler 自监督）在 T 翻译后的图上去噪。
 - 原理：BSN 靠「邻像素噪声独立」；原始散斑空间相关(lag-1 0.82) → BSN 去不动；T 白化到 0.13、谱推平
   → 单图自监督 BSN 生效。
-- 结果：**5×5×4 成功**（`results/images/bsn_3x3x1/5x5x4_0_npy_0_bsn.png`，BSN(translated) 明显比
-  BSN(raw) 干净）；**3×3×1 肉眼偏失败**（NTN=D′(T) 面板过饱和，疑尺度问题），且 bsn_test 只打印
-  指标、未落盘 → 该图无保存的定量数据。
-- 待办：若要 BSN 的 PSNR/MSSIM/r 表，需带 `--reference` 重跑并把 stdout 指标落盘。
+- 结果（5×5×4，带 `--reference` 重跑，log1p 域 vs 参考 P/MSSIM/r）：
+  - noisy 17.74 / 0.229 / 0.719；**BSN(raw) 17.76 / 0.233 / 0.721 ≈ noisy → 原始相关噪声上 BSN 完全去不动**；
+  - **BSN(translated) 20.60 / 0.497 / 0.856（+2.9dB、r 0.72→0.86）→ 白化后单图 BSN 真正生效**；
+  - NTN=D′(T) 21.30 / 0.673 / 0.887（完整 NTN 仍最好）。
+  - 图：`results/images/bsn_3x3x1/5x5x4_0_npy_0_bsn.png`。
+- **3×3×1 肉眼偏失败**（NTN=D′(T) 面板过饱和，疑尺度问题）；bsn_test 仅打印指标未落盘，该图无保存数据。
 
 ## 2026-06-26 重排组会汇报 PPT
 

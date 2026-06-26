@@ -281,17 +281,19 @@ text(s,1.0,5.84,11.4,0.85,[[("一句话： ",15,MINT,True),
 s=slide(); motif_title(s,"后续探索：白化后单张图 BSN 可行（5×5×4）",10)
 pic(s,os.path.join(R,'images','bsn_3x3x1','5x5x4_0_npy_0_bsn.png'),0.55,1.5,12.2,2.95)
 cap(s,0.55,4.48,12.2,"5×5×4：noisy / BSN(raw) / T(I)翻译图 / BSN(translated) / NTN=D′(T) / reference —— 原始散斑上 BSN 去不动，翻译白化后 BSN(translated) 明显变干净")
-table(s,0.6,5.1,[3.1,1.7,1.7],[
-    ["T 白化前后（噪声统计）","raw","T(I)"],
-    ["邻像素相关 lag-1","0.82","0.13"],
-    ["谱平坦度 (越大越白)","0.055","0.508"],
-],fs=11,rh=0.44)
-bullets(s,7.7,5.1,5.1,2.1,[
-    [("思路：",14,NAVY,True),("BSN 靠“邻像素噪声独立”。",13,INK,False)],
-    [("· 原始散斑空间相关(0.82) → BSN 去不动;",13,RED,True)],
-    [("· T 白化到 0.13、谱推平 → 单图自监督 BSN 生效（5×5×4 成功）;",13,INK,False)],
-    [("· 3×3×1 上肉眼偏失败（NTN 面板过饱和、疑尺度问题），且未保存指标。",12.5,MUTE,False)],
-],sz=13,gap=5)
+table(s,0.6,5.05,[2.9,1.4,1.5,1.4],[
+    ["5×5×4 vs 参考(log1p)","PSNR","MSSIM","r"],
+    ["noisy","17.74","0.229","0.719"],
+    ["BSN(raw)","17.76","0.233","0.721"],
+    ["BSN(translated)","20.60","0.497","0.856"],
+    ["NTN=D′(T)","21.30","0.673","0.887"],
+],fs=10.5,rh=0.4,hl=(3,))
+bullets(s,8.15,5.1,4.7,2.1,[
+    [("硬数据（5×5×4）：",14,NAVY,True)],
+    [("· BSN(raw) 17.76 ≈ noisy 17.74 →",12.5,INK,False),("原始相关噪声上 BSN 去不动;",12.5,RED,True)],
+    [("· BSN(translated) 20.60（+2.9dB、r 0.72→0.86）→",12.5,INK,False),("白化后单图 BSN 生效;",12.5,MINT,True)],
+    [("· 3×3×1 肉眼偏失败（疑尺度问题）。",12,MUTE,False)],
+],sz=12.5,gap=5)
 
 prs.save(OUT)
 print("saved",OUT,"slides",len(prs.slides._sldIdLst))
